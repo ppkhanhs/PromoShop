@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Lịch sử đơn hàng</title>
+  <style>
+    :root{
+      --bg:#f8fafc;--card:#fff;--muted:#6b7280;
+      --brand:#2563eb;--brand-2:#1d4ed8;
+      --border:#e5e7eb;--ok:#16a34a;--danger:#ef4444;
+      --shadow:0 6px 20px rgba(0,0,0,.06);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#0f172a}
+    a{text-decoration:none;color:inherit}
+    .header{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--border)}
+    .header-inner{max-width:1200px;margin:0 auto;display:flex;gap:16px;align-items:center;padding:12px}
+    .logo{font-weight:800;font-size:20px;color:var(--brand)}
+    .container{max-width:1200px;margin:20px auto;padding:0 12px;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+    h1{font-size:22px;color:var(--brand-2)}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border-bottom:1px solid var(--border);padding:10px;text-align:left}
+    th{background:#f1f5f9;font-weight:600}
+    tr:hover{background:#f9fafb}
+    .muted{color:var(--muted)}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:500}
+    .ok{background:#dcfce7;color:#166534}
+    .warn{background:#fef3c7;color:#92400e}
+    .err{background:#fee2e2;color:#991b1b}
+    .empty{padding:24px;text-align:center;color:var(--muted)}
+    .btn{background:var(--brand);color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer}
+    .btn:hover{background:var(--brand-2)}
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a class="logo" href="/shop/index.html">PromoShop</a>
+      <div style="margin-left:auto"><a href="/shop/index.html">← Tiếp tục mua sắm</a></div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="card">
+      <h1>Lịch sử đơn hàng</h1>
+      <table id="orders">
+        <thead>
+          <tr>
+            <th>Mã đơn</th>
+            <th>Ngày đặt</th>
+            <th>Khách hàng</th>
+            <th>Thanh toán</th>
+            <th>Tổng tiền</th>
+            <th>Giảm</th>
+            <th>Thành tiền</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="empty" class="empty" style="display:none;">Chưa có đơn hàng nào.</div>
+    </div>
+  </div>
+
+  <script>
+  const STORAGE_PHONE_KEY = 'promo_account_phone';
+  const CUST_ID = localStorage.getItem(STORAGE_PHONE_KEY) || 'guest';
+  const vnd = n => Number(n||0).toLocaleString('vi-VN') + ' đ';
+
+  async function loadOrders(){
+    const r = await fetch(`/api/customer/orders?customer_id=${CUST_ID}`);
+    const j = await r.json();
+    const tb = document.querySelector('#orders tbody');
+    const empty = document.getElementById('empty');
+    tb.innerHTML = '';
+    if(!j.ok){ 
+      tb.innerHTML='<tr><td colspan="7" class="err">Lỗi tải dữ liệu!</td></tr>'; 
+      return; 
+    }
+
+    const data = j.data || [];
+    if(!data.length){
+      empty.style.display='block';
+      return;
+    }
+    empty.style.display='none';
+
+    data.forEach(o=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${o.order_id}</td>
+        <td>${
+              o.order_date
+                ? (() => {
+                    const d = o.order_date.toString().replace(' ', 'T'); // để parse dạng "2025-10-08T15:42:37"
+                    const local = new Date(d);
+                    return local.toLocaleString('vi-VN', { hour12: false });
+                  })()
+                : ''
+            }</td>
+        <td>${o.name || '-'}</td>
+        <td>${o.payment || '-'}</td>
+        <td>${vnd(o.total_amount)}</td>
+        <td>${vnd(o.discount_amount)}</td>
+        <td><b>${vnd(o.final_amount)}</b></td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  loadOrders();
+</script>

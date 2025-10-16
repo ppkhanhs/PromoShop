@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Thanh toán đơn hàng</title>
+  <style>
+    :root{
+      --bg:#f8fafc;--card:#fff;--muted:#6b7280;--brand:#2563eb;--brand-2:#1d4ed8;
+      --border:#e5e7eb;--danger:#ef4444;--ok:#16a34a;--shadow:0 6px 20px rgba(0,0,0,.06)
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#0f172a}
+    a{text-decoration:none;color:inherit}
+    .header{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--border)}
+    .header-inner{max-width:1200px;margin:0 auto;display:flex;gap:16px;align-items:center;padding:12px}
+    .logo{font-weight:800;font-size:20px;color:var(--brand)}
+    .iconbtn{display:inline-flex;align-items:center;gap:4px;font-weight:500;color:#0f172a;text-decoration:none}
+    .iconbtn:hover{color:var(--brand)}
+    .container{max-width:1200px;margin:16px auto;padding:0 12px;
+      display:grid;grid-template-columns:1fr 380px;gap:16px}
+    @media (max-width: 980px){.container{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--border);
+      border-radius:14px;box-shadow:var(--shadow)}
+    .section-title{font-weight:700;margin-bottom:8px}
+    .form{display:flex;flex-direction:column;gap:12px;padding:16px}
+    label{font-weight:500;margin-bottom:4px}
+    input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
+    textarea{resize:vertical}
+    .summary{padding:16px;display:flex;flex-direction:column;gap:12px}
+    .row{display:flex;justify-content:space-between;align-items:center}
+    .total{font-size:20px;font-weight:800}
+    .btn{display:inline-flex;justify-content:center;align-items:center;gap:8px;width:100%;
+      padding:12px;border:0;border-radius:12px;background:var(--brand);color:#fff;cursor:pointer}
+    .btn:hover{background:var(--brand-2)}
+    .item{display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+    .thumb{width:64px;height:64px;border-radius:8px;overflow:hidden;background:#e2e8f0}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a class="logo" href="/shop/index.html">PromoShop</a>
+      <div style="margin-left:auto"><a href="/shop/index.html">← Tiếp tục mua sắm</a></div>
+    </div>
+  </header>
+
+  <div class="container">
+    <section class="card">
+      <form id="checkout-form" class="form">
+        <h2 class="section-title">Thông tin giao hàng</h2>
+        <div>
+          <label for="name">Họ và tên</label>
+          <input id="name" required placeholder="Nguyễn Văn A"/>
+        </div>
+        <div>
+          <label for="phone">Số điện thoại</label>
+          <input id="phone" type="tel" required placeholder="0901234567"/>
+        </div>
+        <div>
+          <label for="address">Địa chỉ giao hàng</label>
+          <textarea id="address" rows="2" required placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"></textarea>
+        </div>
+        <div>
+          <label for="note">Ghi chú (tùy chọn)</label>
+          <textarea id="note" rows="2" placeholder="Ví dụ: giao giờ hành chính"></textarea>
+        </div>
+
+        <h2 class="section-title" style="margin-top:12px">Phương thức thanh toán</h2>
+        <div>
+          <select id="payment">
+            <option value="cod">Thanh toán khi nhận hàng (COD)</option>
+            <option value="bank">Chuyển khoản ngân hàng</option>
+            <option value="momo">Ví MoMo</option>
+          </select>
+        </div>
+
+        <button class="btn" type="submit">Xác nhận đặt hàng</button>
+      </form>
+    </section>
+
+    <!-- RIGHT: Tóm tắt đơn hàng -->
+    <aside class="card">
+      <div class="summary">
+        <h2 class="section-title">Tóm tắt đơn hàng</h2>
+        <div id="items"></div>
+        <div class="row"><span>Tạm tính</span><span id="sub" class="price">0 đ</span></div>
+        <div class="row"><span>Giảm khuyến mãi</span><span id="disc" class="price">-0 đ</span></div>
+        <div class="row muted"><span>Phí vận chuyển</span><span>—</span></div>
+        <hr/>
+        <div class="row total"><span>Tổng cộng</span><span id="total">0 đ</span></div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const STORAGE_PHONE_KEY = 'promo_account_phone';
+    const CUST_ID = localStorage.getItem(STORAGE_PHONE_KEY) || 'guest';
+    const vnd = n => Number(n||0).toLocaleString('vi-VN') + ' đ';
+
+    async function apiCart(){ 
+      const r = await fetch('/api/customer/cart?customer_id='+encodeURIComponent(CUST_ID)); 
+      return (await r.json()).data||[]; 
+    }
+
+    async function apiProductDetail(id){
+      try{
+        const r = await fetch('/api/customer/products/'+encodeURIComponent(id));
+        if(!r.ok) return null;
+        const j = await r.json();
+        return j.ok?j.data:null;
+      }catch{return null;}
+    }
+
+    async function loadSummary(){
+      const listBox=document.getElementById('items');
+      listBox.innerHTML='Đang tải...';
+      const items = await apiCart();
+      let sub=0, total=0;
+
+      const ids = [...new Set(items.map(x=>x.product_id))];
+      const details={};
+      for (const id of ids){
+        details[id]=await apiProductDetail(id) || {name:'Sản phẩm '+id, price:0, image_url:'https://picsum.photos/seed/'+id+'/600/400'};
+      }
+
+      listBox.innerHTML='';
+      items.forEach(it=>{
+        const d = details[it.product_id];
+        const price = d.price || 0;
+        const line = price * it.qty;
+        sub += line; total += line;
+        const div=document.createElement('div');
+        div.className='item';
+        div.innerHTML=`
+          <div class="thumb"><img src="${d.image_url}" alt="${d.name}"/></div>
+          <div style="flex:1">
+            <div>${d.name}</div>
+            <div class="muted">SL: ${it.qty}</div>
+          </div>
+          <div class="price">${vnd(line)}</div>`;
+        listBox.appendChild(div);
+      });
+
+      document.getElementById('sub').textContent=vnd(sub);
+      document.getElementById('disc').textContent='-0 đ';
+      document.getElementById('total').textContent=vnd(total);
+    }
+
+    // Gửi đơn hàng và lưu thời gian theo múi giờ VN
+    document.getElementById('checkout-form').onsubmit = async e=>{
+      e.preventDefault();
+      const order={
+        customer_id:CUST_ID,
+        name:document.getElementById('name').value.trim(),
+        phone:document.getElementById('phone').value.trim(),
+        address:document.getElementById('address').value.trim(),
+        note:document.getElementById('note').value.trim(),
+        payment:document.getElementById('payment').value,
+        created_at: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
+      };
+      const res = await fetch('/api/customer/checkout',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(order)
+      }).then(r=>r.json()).catch(()=>({ok:false}));
+      if(res.ok){
+        localStorage.setItem(STORAGE_PHONE_KEY, order.phone);
+        alert('Đặt hàng thành công! Mã đơn: '+res.order_id);
+        window.location.href='/shop/orders.html';
+      }else{
+        alert('Lỗi đặt hàng: '+(res.error||'Không kết nối được server'));
+      }
+    };
+
+    loadSummary();
+  </script>
+</body>
+</html>

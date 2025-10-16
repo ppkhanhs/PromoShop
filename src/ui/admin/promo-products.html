@@ -1,0 +1,92 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Admin - San pham khuyen mai</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/css/admin.css" />
+</head>
+<body>
+  <div id="adminHeader"></div>
+
+  <div class="admin-layout">
+    <aside class="admin-sidebar">
+      <a href="/admin/dashboard.html"><i class="fa-solid fa-chart-pie"></i>Tong quan</a>
+      <a href="/admin/promos.html"><i class="fa-solid fa-tags"></i>Khuyen mai</a>
+      <a href="/admin/products.html"><i class="fa-solid fa-box"></i>San pham</a>
+      <a href="/admin/promo-products.html" class="active"><i class="fa-solid fa-boxes-stacked"></i>San pham khuyen mai</a>
+      <a href="/admin/orders.html"><i class="fa-solid fa-receipt"></i>Don hang</a>
+      <a href="/admin/accounts.html"><i class="fa-solid fa-user-group"></i>Tai khoan</a>
+      <a href="/admin/codes.html"><i class="fa-solid fa-ticket"></i>Ma giam gia</a>
+    </aside>
+
+    <main class="admin-main">
+      <section class="admin-section active">
+        <h3><i class="fa-solid fa-hand-holding-heart"></i>San pham khuyen mai</h3>
+        <div class="admin-card">
+          <div class="filter-bar">
+            <span class="muted">Loc theo khuyen mai</span>
+            <select id="promoProductFilter">
+              <option value="all">Tat ca chuong trinh</option>
+            </select>
+          </div>
+          <form id="promoProductForm">
+            <div class="form-grid">
+              <div>
+                <label class="form-label" for="promoProductPromoId">Khuyen mai</label>
+                <select id="promoProductPromoId" required>
+                  <option value="">Chon khuyen mai</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label" for="promoProductProductId">San pham</label>
+                <select id="promoProductProductId" required>
+                  <option value="">Chon san pham</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label" for="promoProductPercent">Giam %</label>
+                <input id="promoProductPercent" type="number" min="0" max="100" placeholder="VD: 10" />
+              </div>
+              <div>
+                <label class="form-label" for="promoProductAmount">Giam tien</label>
+                <input id="promoProductAmount" type="number" min="0" step="1000" placeholder="VD: 5000" />
+              </div>
+              <div>
+                <label class="form-label" for="promoProductGift">Tang kem</label>
+                <input id="promoProductGift" type="text" placeholder="Ma san pham qua tang" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-warning text-white"><i class="fa-solid fa-plus me-1"></i>Luu ap dung</button>
+              <button type="button" id="promoProductResetBtn" class="btn btn-outline-secondary">Lam moi</button>
+              <button type="button" id="promoProductDeleteBtn" class="btn btn-danger d-none">Xoa</button>
+            </div>
+          </form>
+        </div>
+        <div class="table-wrapper" style="margin-top:20px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Khuyen mai</th>
+                <th>San pham</th>
+                <th>Giam %</th>
+                <th>Giam tien</th>
+                <th>Tang kem</th>
+                <th class="text-end">Thao tac</th>
+              </tr>
+            </thead>
+            <tbody id="promoProductTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="adminFooter"></div>
+
+  <script type="module" src="/admin/js/promo-products-page.js"></script>
+</body>
+</html>
