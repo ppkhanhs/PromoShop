@@ -1,6 +1,6 @@
 ﻿@extends('layouts.client.master')
 
-@section('title', 'PromoShop - Trang uu dai thong minh')
+@section('title', 'PromoShop - Trang ưu đãi thông minh')
 
 @section('content')
     @php
@@ -35,35 +35,35 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path d="M12 3v18M5 9h7m0 0 7 6" stroke="#1877f2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
-                Smart deals daily
+                Ưu đãi thông minh mỗi ngày
             </span>
             <h1 class="promo-hero__headline">
-                San uu dai da tang, gom tron ma giam gia theo kieu super app
+                Săn ưu đãi đa tầng, gom trọn mã giảm giá theo kiểu super app
             </h1>
             <p class="promo-hero__lead">
-                PromoShop lay du lieu tu Cassandra de dong bo mo hinh khuyen mai bac thang
-                giong Grab, Shopee: ket hop giam gia, freeship va combo tang qua trong mot noi dung duy nhat.
+                PromoShop lấy dữ liệu từ Cassandra để đồng bộ mô hình khuyến mãi bậc thang
+                giống Grab, Shopee: kết hợp giảm giá, freeship và combo tặng quà trong một nội dung duy nhất.
             </p>
             <div class="promo-hero__actions">
-                <a href="#products" class="btn btn-primary btn-lg">Kham pha san pham</a>
-                <a href="#promotions" class="btn btn-outline-primary btn-lg">Xem tat ca uu dai</a>
+                <a href="#products" class="btn btn-primary btn-lg">Khám phá sản phẩm</a>
+                <a href="#promotions" class="btn btn-outline-primary btn-lg">Xem tất cả ưu đãi</a>
             </div>
             <div class="promo-stats">
                 <div class="promo-stat">
                     <strong>{{ $promotionCount }}</strong>
-                    <span>Chuong trinh dang hoat dong</span>
+                    <span>Chương trình đang hoạt động</span>
                 </div>
                 <div class="promo-stat">
                     <strong>{{ $productCount }}</strong>
-                    <span>San pham dang mo ban</span>
+                    <span>Sản phẩm đang mở bán</span>
                 </div>
                 <div class="promo-stat">
                     <strong>{{ $categoryCount }}</strong>
-                    <span>Nhom hang duoc tu dong goi y</span>
+                    <span>Nhóm hàng được tự động gợi ý</span>
                 </div>
                 <div class="promo-stat">
                     <strong>{{ $bestSavingDisplay }}</strong>
-                    <span>Gia tri giam toi da</span>
+                    <span>Giá trị giảm tối đa</span>
                 </div>
             </div>
         </div>
@@ -77,56 +77,56 @@
     <section id="promotions" class="mb-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <h2 class="h4 mb-1">Spotlight khuyen mai</h2>
-                <p class="text-muted mb-0">Tong hop chuong trinh noi bat nhat hien tai</p>
+                <h2 class="h4 mb-1">Điểm nhấn khuyến mãi</h2>
+                <p class="text-muted mb-0">Tổng hợp chương trình nổi bật nhất hiện tại</p>
             </div>
             <a href="{{ route('client.cart') }}" class="btn btn-light btn-sm">
-                Xem uu dai da ap dung
+                Xem ưu đãi đã áp dụng
             </a>
         </div>
 
         @if ($spotlights->isEmpty())
-            <div class="alert alert-secondary">Chua co chuong trinh nao duoc kich hoat.</div>
+            <div class="alert alert-secondary">Chưa có chương trình nào được kích hoạt.</div>
         @else
             <div class="promo-spotlight">
                 @foreach ($spotlights as $promotion)
                     @php
-                        $start = $promotion->get('start_date') ?? 'Khong gioi han';
-                        $end = $promotion->get('end_date') ?? 'Khong gioi han';
+                        $start = $promotion->get('start_date') ?? 'Không giới hạn';
+                        $end = $promotion->get('end_date') ?? 'Không giới hạn';
                         $tiers = method_exists($promotion, 'tiers') ? collect($promotion->tiers() ?? []) : collect();
                     @endphp
                     <article class="promo-card">
                         <span class="promo-tag">{{ $promotion->statusLabel() }}</span>
                         <h3 class="promo-card__title">
-                            {{ $promotion->title ?? $promotion->get('title') ?? $promotion->promo_id ?? 'Khuyen mai' }}
+                            {{ $promotion->title ?? $promotion->get('title') ?? $promotion->promo_id ?? 'Khuyến mãi' }}
                         </h3>
                         <p class="promo-card__period">
-                            Thoi gian: {{ $start }} - {{ $end }}
+                            Thời gian: {{ $start }} - {{ $end }}
                         </p>
                         @if ($tiers->isNotEmpty())
                             <ul class="promo-tier-list">
                                 @foreach ($tiers as $tier)
                                     <li>
                                         <strong>{{ $tier->label() }}</strong> ·
-                                        Don tu {{ $tier->formattedMinValue() }}
+                                        &bull; Đơn từ {{ $tier->formattedMinValue() }}
                                         @if ($tier->get('discount_percent'))
-                                            · Giam {{ $tier->get('discount_percent') }}%
+                                            &bull; Giảm {{ $tier->get('discount_percent') }}%
                                         @endif
                                         @if ($tier->get('discount_amount'))
-                                            · Giam them {{ number_format($tier->get('discount_amount'), 0, ',', '.') }} VND
+                                            &bull; Giảm thêm {{ number_format($tier->get('discount_amount'), 0, ',', '.') }} VND
                                         @endif
                                         @if ($tier->get('freeship'))
-                                            · Freeship
+                                            &bull; Freeship
                                         @endif
                                         @if ($tier->get('gift_product_id'))
-                                            · Tang {{ $tier->get('combo_description') ?? 'qua kem' }}
+                                            &bull; Tặng {{ $tier->get('combo_description') ?? 'quà kèm' }}
                                         @endif
                                     </li>
                                 @endforeach
                             </ul>
                         @else
                             <p class="text-muted small mb-0">
-                                Ap dung toan bo don hang hop le. Kiem tra gio hang de xem cach toi uu.
+                                Áp dụng toàn bộ đơn hàng hợp lệ. Kiểm tra giỏ hàng để xem cách tối ưu.
                             </p>
                         @endif
                     </article>
@@ -138,18 +138,18 @@
     <section class="mb-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <h2 class="h4 mb-1" id="products">San pham goi y tu he thong</h2>
+                <h2 class="h4 mb-1" id="products">Sản phẩm gợi ý từ hệ thống</h2>
                 <p class="text-muted mb-0">
-                    Du lieu lay tu bang products va products_by_id tren Cassandra.
+                    Dữ liệu lấy từ bảng products và products_by_id trên Cassandra.
                 </p>
             </div>
             <span class="badge rounded-pill text-bg-light">
-                Tong cong {{ $productCount }} san pham
+                Tổng cộng {{ $productCount }} sản phẩm
             </span>
         </div>
 
         @if ($productList->isEmpty())
-            <div class="alert alert-warning">Chua co san pham nao trong he thong.</div>
+            <div class="alert alert-warning">Chưa có sản phẩm nào trong hệ thống.</div>
         @else
             <div class="promo-product-grid">
                 @foreach ($productList as $product)
@@ -160,10 +160,10 @@
                         </div>
                         <div class="promo-product-body">
                             <div>
-                                <span class="badge text-bg-light">{{ $product->category ?? 'Khac' }}</span>
+                                <span class="badge text-bg-light">{{ $product->category ?? 'Khác' }}</span>
                                 <h3 class="h6 mt-2 mb-1">{{ $product->name ?? $product->product_id }}</h3>
                                 <p class="text-muted small mb-0">
-                                    Ma hang: {{ $product->product_id }}
+                                    Mã hàng: {{ $product->product_id }}
                                 </p>
                             </div>
                             <div class="price-chip">
@@ -174,14 +174,14 @@
                             </div>
                             <div class="promo-product-actions">
                                 <a href="{{ route('client.cart') }}" class="btn btn-outline-primary btn-sm">
-                                    Xem gio hang
+                                    Xem giỏ hàng
                                 </a>
                                 <form action="{{ route('client.cart.add') }}" method="POST">
                                     @csrf
                                     <input type="hidden" name="product_id" value="{{ $product->product_id }}">
                                     <input type="hidden" name="quantity" value="1">
                                     <button type="submit" class="btn btn-primary btn-sm">
-                                        Them vao gio
+                                        Thêm vào giỏ
                                     </button>
                                 </form>
                             </div>
@@ -199,25 +199,25 @@
                     <span class="badge bg-primary-subtle text-primary fw-semibold px-3 py-2">
                         Cassandra funnel
                     </span>
-                    <h3 class="h5 mt-3">Ap dung uu dai trong 3 buoc</h3>
+                    <h3 class="h5 mt-3">Áp dụng ưu đãi trong 3 bước</h3>
                 </div>
                 <div class="d-flex flex-column flex-md-row gap-3">
                     <div class="promo-recommend flex-fill">
-                        <strong>1. Chon san pham</strong>
+                        <strong>1. Chọn sản phẩm</strong>
                         <span class="text-muted small">
-                            Lay danh sach tu bang products de hien thi goi y danh muc.
+                            Lấy danh sách từ bảng products để hiển thị gợi ý danh mục.
                         </span>
                     </div>
                     <div class="promo-recommend flex-fill">
-                        <strong>2. He thong tinh uu dai</strong>
+                        <strong>2. Hệ thống tính ưu đãi</strong>
                         <span class="text-muted small">
-                            Promotion_engine doc promotion_tiers va promotions_by_status de chon toi uu.
+                            Promotion_engine đọc promotion_tiers và promotions_by_status để chọn tối ưu.
                         </span>
                     </div>
                     <div class="promo-recommend flex-fill">
-                        <strong>3. Dat hang</strong>
+                        <strong>3. Đặt hàng</strong>
                         <span class="text-muted small">
-                            Thong tin thanh toan duoc luu vao orders va promotion_logs de theo doi.
+                            Thông tin thanh toán được lưu vào orders và promotion_logs để theo dõi.
                         </span>
                     </div>
                 </div>

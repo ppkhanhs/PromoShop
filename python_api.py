@@ -704,4 +704,3 @@ def dashboard():
             "top_promotions": list(top_promos),
         }
     }
-
