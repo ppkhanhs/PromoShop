@@ -73,7 +73,7 @@ class ClientController extends Controller
 
         $this->storeCartItems($request, $items);
 
-        return redirect()->route('client.cart')->with('success', 'Đã thêm sản phẩm vào giỏ hàng.');
+        return redirect()->back()->with('success', 'Đã thêm sản phẩm vào giỏ hàng.');
     }
 
     public function updateCart(Request $request): RedirectResponse
@@ -199,4 +199,3 @@ class ClientController extends Controller
         $request->session()->put('cart.items', $items);
     }
 }
-

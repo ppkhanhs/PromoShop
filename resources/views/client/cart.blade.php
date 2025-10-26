@@ -1,127 +1,151 @@
-@extends('layouts.client.master')
+﻿@extends('layouts.client.master')
 
-@section('title', 'Giỏ hàng của bạn - PromoShop')
+@section('title', 'Gio hang cua ban - PromoShop')
 
 @section('content')
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0">Giỏ hàng của bạn</h1>
-        <a href="{{ route('client.home') }}" class="btn btn-outline-secondary">Tiếp tục mua sắm</a>
+    @php
+        $cartCollection = collect($cartItems ?? []);
+        $hasItems = $cartCollection->isNotEmpty();
+        $totalQuantity = $cartCollection->sum('quantity');
+        $promotionList = collect($promotions ?? [])->take(3);
+        $appliedPromotions = collect($summary['applied_promotions'] ?? []);
+        $gifts = collect($summary['gifts'] ?? []);
+    @endphp
+
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <span class="badge bg-primary-subtle text-primary fw-semibold px-3 py-2">Checkout squad</span>
+            <h1 class="h3 mt-2 mb-1">Gio hang thong minh</h1>
+            <p class="text-muted mb-0">Toi uu khuyen mai theo thoi gian thuc tu Cassandra</p>
+        </div>
+        <div class="text-md-end">
+            <a href="{{ route('client.home') }}" class="btn btn-outline-secondary">Tiep tuc mua sam</a>
+        </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-lg-8">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                    <h2 class="h5 mb-0">Sản phẩm đã chọn</h2>
+    <div class="cart-shell">
+        <section class="cart-panel">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Danh sach san pham</h2>
+                <span class="text-muted small">{{ $totalQuantity }} mon</span>
+            </div>
+
+            @if (!$hasItems)
+                <div class="promo-recommend text-center">
+                    <h3 class="h5">Gio hang dang trong</h3>
+                    <p class="text-muted mb-0">Them san pham tu trang chu de he thong goi y uu dai tot nhat.</p>
+                    <a href="{{ route('client.home') }}" class="btn btn-primary mt-2">Bat dau kham pha</a>
                 </div>
-                <div class="list-group list-group-flush">
-                    @forelse ($cartItems as $item)
+            @else
+                <div class="d-grid gap-3">
+                    @foreach ($cartCollection as $item)
                         @php
-                            $lineTotal = $item['price'] * $item['quantity'];
+                            $lineTotal = ($item['price'] ?? 0) * ($item['quantity'] ?? 0);
                         @endphp
-                        <div class="list-group-item">
-                            <div class="d-flex flex-column flex-md-row align-items-start gap-3">
-                                <img src="{{ $item['image_url'] ?? 'https://images.promoshop.vn/placeholder/product.png' }}"
-                                     alt="{{ $item['name'] }}"
-                                     class="rounded"
-                                     style="width: 120px; height: 120px; object-fit: cover;">
-                                <div class="flex-grow-1">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <h3 class="h5">{{ $item['name'] }}</h3>
-                                            <p class="text-muted mb-2">Mã sản phẩm: {{ $item['product_id'] }}</p>
-                                            <span class="badge text-bg-light">Đơn giá: {{ number_format($item['price'], 0, ',', '.') }} đ</span>
-                                        </div>
-                                        <form action="{{ route('client.cart.remove') }}" method="POST" class="ms-auto">
-                                            @csrf
-                                            @method('DELETE')
-                                            <input type="hidden" name="product_id" value="{{ $item['product_id'] }}">
-                                            <button type="submit" class="btn btn-link text-danger">Xóa</button>
-                                        </form>
+                        <article class="cart-item-modern">
+                            <img src="{{ $item['image_url'] ?? 'https://images.promoshop.vn/placeholder/product.png' }}" alt="{{ $item['name'] ?? $item['product_id'] }}">
+                            <div class="cart-item-meta">
+                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <h3 class="h6 mb-1">{{ $item['name'] ?? $item['product_id'] }}</h3>
+                                        <p class="text-muted small mb-0">Ma hang: {{ $item['product_id'] }}</p>
+                                        <p class="text-muted small mb-0">Don gia: {{ number_format($item['price'] ?? 0, 0, ',', '.') }} VND</p>
                                     </div>
-                                    <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
-                                        <form action="{{ route('client.cart.update') }}" method="POST" class="d-flex align-items-center gap-2">
-                                            @csrf
-                                            @method('PATCH')
-                                            <input type="hidden" name="product_id" value="{{ $item['product_id'] }}">
-                                            <label class="form-label mb-0 me-2">Số lượng</label>
-                                            <input type="number" name="quantity" class="form-control" value="{{ $item['quantity'] }}" min="1" style="width: 90px;">
-                                            <button type="submit" class="btn btn-outline-primary">Cập nhật</button>
-                                        </form>
-                                        <div class="ms-auto fw-semibold fs-5 text-primary">
-                                            {{ number_format($lineTotal, 0, ',', '.') }} đ
-                                        </div>
+                                    <form action="{{ route('client.cart.remove') }}" method="POST">
+                                        @csrf
+                                        @method('DELETE')
+                                        <input type="hidden" name="product_id" value="{{ $item['product_id'] }}">
+                                        <button type="submit" class="btn btn-link text-danger p-0">Xoa</button>
+                                    </form>
+                                </div>
+                                <div class="d-flex flex-wrap align-items-center gap-3">
+                                    <form action="{{ route('client.cart.update') }}" method="POST" class="d-flex align-items-center gap-2">
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="product_id" value="{{ $item['product_id'] }}">
+                                        <label class="text-muted small mb-0">So luong</label>
+                                        <input type="number" name="quantity" class="form-control" value="{{ $item['quantity'] }}" min="1" style="width: 90px;">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm">Cap nhat</button>
+                                    </form>
+                                    <div class="ms-md-auto">
+                                        <span class="fw-semibold">{{ number_format($lineTotal, 0, ',', '.') }} VND</span>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    @empty
-                        <div class="list-group-item text-muted text-center py-5">
-                            Giỏ hàng đang trống.
-                        </div>
-                    @endforelse
+                        </article>
+                    @endforeach
                 </div>
+            @endif
+        </section>
+
+        <aside class="d-grid gap-3">
+            <div class="cart-summary">
+                <div class="summary-rows">
+                    <div class="summary-row">
+                        <span>Tam tinh</span>
+                        <strong>{{ number_format($summary['subtotal'] ?? 0, 0, ',', '.') }} VND</strong>
+                    </div>
+                    <div class="summary-row text-success">
+                        <span>Giam gia</span>
+                        <strong>-{{ number_format($summary['discount'] ?? 0, 0, ',', '.') }} VND</strong>
+                    </div>
+                    <div class="summary-row">
+                        <span>Phi giao hang</span>
+                        <strong>{{ number_format($summary['shipping_fee'] ?? 0, 0, ',', '.') }} VND</strong>
+                    </div>
+                    @if (($summary['shipping_discount'] ?? 0) > 0)
+                        <div class="summary-row text-success">
+                            <span>Giam phi giao hang</span>
+                            <strong>-{{ number_format($summary['shipping_discount'], 0, ',', '.') }} VND</strong>
+                        </div>
+                    @endif
+                    <div class="summary-divider"></div>
+                    <div class="summary-row fs-5">
+                        <span>Thanh toan</span>
+                        <strong>{{ number_format($summary['final_total'] ?? 0, 0, ',', '.') }} VND</strong>
+                    </div>
+                </div>
+                <form action="{{ route('client.checkout') }}" method="GET" class="mt-3">
+                    <button type="submit" class="btn btn-light w-100" @if (!$hasItems) disabled @endif>
+                        Tien hanh thanh toan
+                    </button>
+                </form>
             </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                    <h2 class="h5 mb-0">Tổng kết đơn hàng</h2>
+
+            @if ($appliedPromotions->isNotEmpty())
+                <div class="promo-recommend">
+                    <strong>Khuyen mai dang ap dung</strong>
+                    @foreach ($appliedPromotions as $applied)
+                        <div class="promo-recommend__item">
+                            <span>{{ $applied['promotion']['title'] ?? $applied['promotion']['promo_id'] }}</span>
+                            <span class="text-primary">{{ $applied['tier']['label'] ?? ('Bac ' . ($applied['tier']['tier_level'] ?? '')) }}</span>
+                        </div>
+                    @endforeach
                 </div>
-                <div class="card-body">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>Tạm tính</span>
-                        <strong>{{ number_format($summary['subtotal'], 0, ',', '.') }} đ</strong>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>Giảm giá</span>
-                        <strong class="text-success">-{{ number_format($summary['discount'], 0, ',', '.') }} đ</strong>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>Phí giao hàng</span>
-                        <strong>{{ number_format($summary['shipping_fee'], 0, ',', '.') }} đ</strong>
-                    </div>
-                    @if ($summary['shipping_discount'] > 0)
-                        <div class="d-flex justify-content-between mb-2 text-success">
-                            <span>Giảm phí giao hàng</span>
-                            <strong>-{{ number_format($summary['shipping_discount'], 0, ',', '.') }} đ</strong>
-                        </div>
-                    @endif
-                    <hr>
-                    <div class="d-flex justify-content-between mb-3 fs-5">
-                        <span>Thành tiền</span>
-                        <strong class="text-primary">{{ number_format($summary['final_total'], 0, ',', '.') }} đ</strong>
-                    </div>
-                    @if (!empty($summary['applied_promotions']))
-                        <div class="mb-3">
-                            <span class="fw-semibold">Khuyến mãi áp dụng:</span>
-                            <ul class="mb-0 text-muted">
-                                @foreach ($summary['applied_promotions'] as $applied)
-                                    <li>
-                                        {{ $applied['promotion']['title'] ?? $applied['promotion']['promo_id'] }} –
-                                        {{ $applied['tier']['label'] ?? ('Tầng ' . $applied['tier']['tier_level']) }}
-                                    </li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    @endif
-                    @if (!empty($summary['gifts']))
-                        <div class="mb-3">
-                            <span class="fw-semibold text-success">Quà tặng:</span>
-                            <ul class="mb-0 text-muted">
-                                @foreach ($summary['gifts'] as $gift)
-                                    <li>{{ $gift['description'] ?? 'Quà tặng đặc biệt' }} (x{{ $gift['quantity'] ?? 1 }})</li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    @endif
-                    <a href="{{ route('client.checkout') }}"
-                       class="btn btn-primary w-100"
-                       @if (empty($cartItems)) disabled @endif>
-                        Tiến hành thanh toán
-                    </a>
+            @endif
+
+            @if ($gifts->isNotEmpty())
+                <div class="promo-recommend">
+                    <strong>Qua tang di kem</strong>
+                    <ul class="gift-list mb-0">
+                        @foreach ($gifts as $gift)
+                            <li>{{ $gift['description'] ?? 'Qua tang' }} (x{{ $gift['quantity'] ?? 1 }})</li>
+                        @endforeach
+                    </ul>
                 </div>
-            </div>
-        </div>
+            @endif
+
+            @if ($promotionList->isNotEmpty())
+                <div class="promo-recommend">
+                    <strong>Goi y them uu dai</strong>
+                    @foreach ($promotionList as $promotion)
+                        <div class="promo-recommend__item">
+                            <span>{{ $promotion->title ?? $promotion->get('title') ?? $promotion->promo_id }}</span>
+                            <span class="text-muted">{{ $promotion->statusLabel() }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </aside>
     </div>
 @endsection
