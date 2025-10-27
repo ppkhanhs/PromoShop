@@ -17,9 +17,17 @@ Route::patch('/cart/update', [ClientController::class, 'updateCart'])->name('cli
 Route::delete('/cart/remove', [ClientController::class, 'removeFromCart'])->name('client.cart.remove');
 Route::get('/checkout', [ClientController::class, 'checkout'])->name('client.checkout');
 Route::post('/checkout', [ClientController::class, 'submitCheckout'])->name('client.checkout.submit');
-Route::get('/orders', [ClientController::class, 'orders'])
-    ->middleware('auth')
-    ->name('client.orders');
+Route::post('/cart/promo/apply', [ClientController::class, 'applyPromotion'])->name('client.cart.promo.apply');
+Route::delete('/cart/promo/remove', [ClientController::class, 'removePromotion'])->name('client.cart.promo.remove');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/orders', [ClientController::class, 'orders'])->name('client.orders');
+    Route::post('/orders/reorder', [ClientController::class, 'reorderOrder'])->name('client.orders.reorder');
+    Route::get('/orders/{order}/invoice', [ClientController::class, 'downloadInvoice'])->name('client.orders.invoice');
+    Route::get('/orders/{order}/track', [ClientController::class, 'trackOrder'])->name('client.orders.track');
+});
+
+Route::get('/support', [ClientController::class, 'support'])->name('client.support');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
