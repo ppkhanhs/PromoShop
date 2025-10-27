@@ -42,7 +42,7 @@ export const AdminRepo = {
         description,
         stackable = false,
         min_order_amount = 0,
-        limit_per_customer = 0,
+        limit_per_customer = 0, 
         global_quota = null,
         channels = ["online"],
       } = payload;
