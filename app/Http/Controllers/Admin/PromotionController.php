@@ -24,6 +24,15 @@ class PromotionController extends Controller
         ]);
     }
 
+    public function conditions(): View
+    {
+        $promotions = $this->dataService->fetchPromotions(true);
+
+        return view('admin.promotions.conditions', [
+            'promotions' => $promotions,
+        ]);
+    }
+
     public function create(): View
     {
         return view('admin.promotions.form', [

@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\PromotionController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -36,8 +38,12 @@ Route::prefix('admin')
         Route::redirect('/', '/admin/dashboard');
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
 
+        Route::get('promotions/conditions', [PromotionController::class, 'conditions'])
+            ->name('promotions.conditions');
         Route::resource('promotions', PromotionController::class)
             ->except(['show']);
+
+        Route::resource('coupons', CouponController::class)->except(['show']);
 
         Route::post('promotions/{promotion}/tiers', [PromotionController::class, 'storeTier'])
             ->name('promotions.tiers.store');
@@ -45,6 +51,8 @@ Route::prefix('admin')
             ->name('promotions.tiers.update');
         Route::delete('promotions/{promotion}/tiers/{tier}', [PromotionController::class, 'destroyTier'])
             ->name('promotions.tiers.destroy');
+
+        Route::resource('orders', OrderController::class)->only(['index', 'show']);
 
         Route::resource('products', AdminProductController::class)->except(['show']);
         Route::resource('users', AdminUserController::class)->except(['show']);
