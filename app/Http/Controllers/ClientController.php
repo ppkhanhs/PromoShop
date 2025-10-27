@@ -192,7 +192,10 @@ class ClientController extends Controller
         }
 
         $promotions = $this->dataService->fetchPromotions(true);
-        $summary = $this->promotionEngine->calculate($items, $promotions, [
+        $selectedIds = $request->session()->get(self::CART_SELECTED_PROMOTIONS_KEY, []);
+        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedIds);
+
+        $summary = $this->promotionEngine->calculate($items, $activePromotions, [
             'shipping_fee' => 15000,
         ]);
 
@@ -219,7 +222,10 @@ class ClientController extends Controller
         ]);
 
         $promotions = $this->dataService->fetchPromotions(true);
-        $summary = $this->promotionEngine->calculate($items, $promotions, [
+        $selectedIds = $request->session()->get(self::CART_SELECTED_PROMOTIONS_KEY, []);
+        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedIds);
+
+        $summary = $this->promotionEngine->calculate($items, $activePromotions, [
             'shipping_fee' => 15000,
         ]);
 
@@ -239,6 +245,7 @@ class ClientController extends Controller
         }
 
         $this->storeCartItems($request, []);
+        $request->session()->forget(self::CART_SELECTED_PROMOTIONS_KEY);
 
         return redirect()->route('client.orders')->with('success', 'Đặt hàng thành công.');
     }
