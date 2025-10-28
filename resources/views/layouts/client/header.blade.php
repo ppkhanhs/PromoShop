@@ -1,35 +1,57 @@
 @php
     $cartItems = session('cart.items', []);
     $cartCount = collect($cartItems)->sum('quantity') ?: count($cartItems);
+    $user = auth()->user();
+    $displayName = $user?->getAttribute('name') ?? $user?->getAuthIdentifier();
+    $initials = $displayName ? collect(explode(' ', $displayName))->map(fn ($part) => mb_substr($part, 0, 1))->join('') : 'PS';
 @endphp
-<header class="border-bottom bg-white shadow-sm">
-    <div class="container py-3 d-flex align-items-center justify-content-between">
-        <a href="{{ route('client.home') }}" class="navbar-brand fw-bold text-primary">PromoShop</a>
-        <nav class="nav gap-3">
-            <a class="nav-link {{ request()->routeIs('client.home') ? 'active fw-semibold' : '' }}" href="{{ route('client.home') }}">Trang chủ</a>
+<header class="site-header">
+    <div class="site-header__inner">
+        <a href="{{ route('client.home') }}" class="site-logo">
+            <span class="site-logo__mark">PS</span>
+            <div class="site-logo__text">
+                <strong>Promo</strong>Shop
+            </div>
+        </a>
+
+        <nav class="site-nav">
+            <a class="{{ request()->routeIs('client.home') ? 'is-active' : '' }}" href="{{ route('client.home') }}">Trang chủ</a>
             @auth
-                <a class="nav-link {{ request()->routeIs('client.orders') ? 'active fw-semibold' : '' }}" href="{{ route('client.orders') }}">Đơn hàng</a>
+                <a class="{{ request()->routeIs('client.orders') ? 'is-active' : '' }}" href="{{ route('client.orders') }}">Đơn hàng</a>
             @endauth
-            <a class="nav-link" href="{{ route('admin.dashboard') }}">Quản trị</a>
+            <a class="{{ request()->routeIs('admin.*') ? 'is-active' : '' }}" href="{{ route('admin.dashboard') }}">Quản trị</a>
         </nav>
-        <div class="d-flex align-items-center gap-2">
-            <a href="{{ route('client.cart') }}" class="btn btn-outline-primary position-relative">
-                Giỏ hàng
-                <span class="badge bg-danger position-absolute top-0 start-100 translate-middle">
-                    {{ $cartCount }}
+
+        <div class="site-actions">
+            <a href="{{ route('client.cart') }}" class="site-cart">
+                <span class="site-cart__icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 3h2l.4 2M7 13h10l3-8H5.4M7 13l-1.2 6H19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="9" cy="20" r="1" fill="currentColor"/>
+                        <circle cx="17" cy="20" r="1" fill="currentColor"/>
+                    </svg>
                 </span>
+                <span>Giỏ hàng</span>
+                <span class="site-cart__count">{{ $cartCount }}</span>
             </a>
+
             @auth
                 <div class="dropdown">
-                    <button class="btn btn-link dropdown-toggle text-decoration-none" data-bs-toggle="dropdown">
-                        {{ auth()->user()->getAttribute('name') ?? auth()->user()->getAuthIdentifier() }}
+                    <button class="user-chip btn p-0 border-0" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span class="user-avatar">{{ $initials }}</span>
+                        <span class="user-name text-truncate">{{ $displayName }}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="m6 10 6 6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
                     </button>
-                    <div class="dropdown-menu dropdown-menu-end">
-                        <span class="dropdown-item-text small text-muted">{{ auth()->user()->getAttribute('email') }}</span>
+                    <div class="dropdown-menu dropdown-menu-end user-dropdown shadow-sm border-0 rounded-4 mt-2">
+                        <span class="dropdown-item-text text-muted small">{{ $user?->getAttribute('email') }}</span>
+                        <a class="dropdown-item" href="{{ route('client.orders') }}">Đơn hàng của tôi</a>
+                        <a class="dropdown-item" href="{{ route('client.cart') }}">Giỏ hàng</a>
                         <div class="dropdown-divider"></div>
                         <form action="{{ route('logout') }}" method="POST">
                             @csrf
-                            <button type="submit" class="dropdown-item text-danger">Đăng xuất</button>
+                            <button type="submit" class="dropdown-item text-danger fw-semibold">Đăng xuất</button>
                         </form>
                     </div>
                 </div>

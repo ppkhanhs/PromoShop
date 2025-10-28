@@ -9,6 +9,7 @@
         $promotionList = collect($promotions ?? [])->take(3);
         $appliedPromotions = collect($summary['applied_promotions'] ?? []);
         $manualPendingPromotions = collect($pendingPromotions ?? []);
+        $disabledPromotions = collect($disabledPromotions ?? []);
         $gifts = collect($summary['gifts'] ?? []);
     @endphp
 
@@ -145,11 +146,9 @@
                         @if ($appliedPromotions->isNotEmpty())
                             <div class="mt-4">
                                 <strong class="small text-uppercase text-muted">Đang áp dụng</strong>
-                                
                                 <ul class="list-unstyled mb-0 mt-2 space-y-3">
                                     @foreach ($appliedPromotions as $applied)
                                         <li class="text-center border rounded-3 py-3 px-3 shadow-sm">
-                                            
                                             <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-success mx-auto mb-2"><path d="M20 6 9 17l-5-5"/></svg>
                                             <div class="fw-semibold text-success mb-2">Đã áp dụng</div>
                                             <div class="my-2">
@@ -170,29 +169,58 @@
                                     @endforeach
                                 </ul>
                             </div>
+                        @endif
 
-                        @elseif ($manualPendingPromotions->isNotEmpty())
+                        @if ($manualPendingPromotions->isNotEmpty())
                             <div class="mt-4">
                                 <strong class="small text-uppercase text-muted">Đang chờ điều kiện</strong>
                                 <ul class="list-unstyled mb-0 mt-2">
                                     @foreach ($manualPendingPromotions as $pending)
                                         <li class="promo-line-item">
-                                            <div>
-                                                <div class="fw-semibold">{{ $pending['title'] ?? $pending['promo_id'] ?? ($pending['promo_code'] ?? 'Khuyến mãi') }}</div>
-                                                <div class="text-muted small">Cần thêm giá trị đơn hàng hoặc số lượng để kích hoạt ưu đãi này.</div>
+                                            <div class="promo-line-item__content">
+                                                <div class="promo-line-item__title">{{ $pending['title'] ?? $pending['promo_id'] ?? ($pending['promo_code'] ?? 'Khuyến mãi') }}</div>
+                                                <div class="promo-line-item__subtitle">Cần thêm giá trị đơn hàng hoặc số lượng để kích hoạt ưu đãi này.</div>
                                             </div>
-                                            <form action="{{ route('client.cart.promo.remove') }}" method="POST">
-                                                @csrf
-                                                @method('DELETE')
-                                                <input type="hidden" name="promotion_id"
-                                                    value="{{ $pending['promo_id'] ?? $pending['promo_code'] ?? ($pending['id'] ?? ($pending['code'] ?? '')) }}">
-                                                <button type="submit" class="link-danger small">Hủy</button>
-                                            </form>
+                                            <div class="promo-line-item__actions">
+                                                <form action="{{ route('client.cart.promo.remove') }}" method="POST">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <input type="hidden" name="promotion_id"
+                                                        value="{{ $pending['promo_id'] ?? $pending['promo_code'] ?? ($pending['id'] ?? ($pending['code'] ?? '')) }}">
+                                                    <button type="submit" class="link-danger small">Hủy</button>
+                                                </form>
+                                            </div>
                                         </li>
                                     @endforeach
                                 </ul>
                             </div>
-                        @else
+                        @endif
+
+                        @if ($disabledPromotions->isNotEmpty())
+                            <div class="mt-4">
+                                <strong class="small text-uppercase text-muted">Đã tắt tự động</strong>
+                                <ul class="list-unstyled mb-0 mt-2">
+                                    @foreach ($disabledPromotions as $disabled)
+                                        <li class="promo-line-item">
+                                            <div class="promo-line-item__content">
+                                                <div class="promo-line-item__title">{{ $disabled['title'] ?? $disabled['promo_id'] ?? ($disabled['promo_code'] ?? 'Khuyến mãi') }}</div>
+                                                <div class="promo-line-item__subtitle">Khuyến mãi này sẽ không tự áp dụng cho tới khi bạn bật lại.</div>
+                                            </div>
+                                            <div class="promo-line-item__actions">
+                                                <form action="{{ route('client.cart.promo.enable') }}" method="POST">
+                                                    @csrf
+                                                    <input type="hidden" name="promotion_id"
+                                                        value="{{ $disabled['promo_id'] ?? $disabled['promo_code'] ?? ($disabled['id'] ?? ($disabled['code'] ?? '')) }}">
+                                                    <button type="submit" class="link-primary small">Bật lại</button>
+                                                </form>
+                                            </div>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
+                        @if ($appliedPromotions->isEmpty() && $manualPendingPromotions->isEmpty() && $disabledPromotions->isEmpty())
                             <p class="text-muted small mb-0 mt-3">
                                 Áp dụng khuyến mãi để tiết kiệm thêm và mở khóa quà tặng hấp dẫn.
                             </p>

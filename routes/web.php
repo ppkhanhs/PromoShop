@@ -19,6 +19,7 @@ Route::get('/checkout', [ClientController::class, 'checkout'])->name('client.che
 Route::post('/checkout', [ClientController::class, 'submitCheckout'])->name('client.checkout.submit');
 Route::post('/cart/promo/apply', [ClientController::class, 'applyPromotion'])->name('client.cart.promo.apply');
 Route::delete('/cart/promo/remove', [ClientController::class, 'removePromotion'])->name('client.cart.promo.remove');
+Route::post('/cart/promo/enable', [ClientController::class, 'enablePromotion'])->name('client.cart.promo.enable');
 
 Route::middleware('auth')->group(function () {
     Route::get('/orders', [ClientController::class, 'orders'])->name('client.orders');

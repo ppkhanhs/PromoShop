@@ -14,6 +14,9 @@ use Illuminate\View\View;
 class ClientController extends Controller
 {
     private const CART_SELECTED_PROMOTIONS_KEY = 'cart.promotions.selected';
+    private const CART_DISABLED_PROMOTIONS_KEY = 'cart.promotions.disabled';
+
+    protected array $productCache = [];
 
     public function __construct(
         protected CassandraDataService $dataService,
@@ -37,13 +40,15 @@ class ClientController extends Controller
         $items = $this->getCartItems($request);
         $promotions = $this->dataService->fetchPromotions(true);
         $selectedPromotionIds = $request->session()->get(self::CART_SELECTED_PROMOTIONS_KEY, []);
-        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedPromotionIds);
+        $disabledPromotionIds = $request->session()->get(self::CART_DISABLED_PROMOTIONS_KEY, []);
+        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedPromotionIds, $disabledPromotionIds);
 
         $summary = $this->promotionEngine->calculate($items, $activePromotions, [
             'shipping_fee' => 15000,
         ]);
         $selectedPromotionDetails = $this->matchPromotions($promotions, $selectedPromotionIds);
         $pendingPromotions = $this->resolvePendingPromotions($selectedPromotionDetails, Arr::get($summary, 'applied_promotions', []));
+        $disabledPromotionDetails = $this->matchPromotions($promotions, $disabledPromotionIds);
 
         return view('client.cart', [
             'cartItems' => $items,
@@ -51,6 +56,7 @@ class ClientController extends Controller
             'promotions' => $promotions,
             'selectedPromotions' => array_map(fn (Promotion $promotion) => $promotion->toArray(), $selectedPromotionDetails),
             'pendingPromotions' => $pendingPromotions,
+            'disabledPromotions' => array_map(fn (Promotion $promotion) => $promotion->toArray(), $disabledPromotionDetails),
         ]);
     }
 
@@ -79,6 +85,7 @@ class ClientController extends Controller
                 'name' => $product->name,
                 'price' => (int) $product->price,
                 'quantity' => $quantity,
+                'image_url' => $product->image_url ?? null,
             ];
         }
 
@@ -152,6 +159,19 @@ class ClientController extends Controller
             $request->session()->put(self::CART_SELECTED_PROMOTIONS_KEY, $selected);
         }
 
+        $disabled = $request->session()->get(self::CART_DISABLED_PROMOTIONS_KEY, []);
+        if (!empty($disabled)) {
+            $normalizedDisabled = array_map(fn ($value) => strtoupper((string) $value), $disabled);
+            if (in_array($identifier, $normalizedDisabled, true)) {
+                $remaining = array_values(array_filter($disabled, fn ($value) => strtoupper((string) $value) !== $identifier));
+                if (empty($remaining)) {
+                    $request->session()->forget(self::CART_DISABLED_PROMOTIONS_KEY);
+                } else {
+                    $request->session()->put(self::CART_DISABLED_PROMOTIONS_KEY, $remaining);
+                }
+            }
+        }
+
         $preview = $this->promotionEngine->calculate($items, [$promotion], [
             'shipping_fee' => 15000,
         ]);
@@ -173,6 +193,8 @@ class ClientController extends Controller
 
         $selected = $request->session()->get(self::CART_SELECTED_PROMOTIONS_KEY, []);
         $target = strtoupper(trim($data['promotion_id']));
+        $normalizedSelected = array_map(fn ($value) => strtoupper((string) $value), $selected);
+        $wasSelected = in_array($target, $normalizedSelected, true);
         $filtered = array_values(array_filter($selected, fn ($value) => strtoupper((string) $value) !== $target));
 
         if (empty($filtered)) {
@@ -181,7 +203,41 @@ class ClientController extends Controller
             $request->session()->put(self::CART_SELECTED_PROMOTIONS_KEY, $filtered);
         }
 
-        return redirect()->route('client.cart')->with('success', 'Đã hủy áp dụng khuyến mãi.');
+        $message = 'Đã hủy áp dụng khuyến mãi.';
+
+        if (!$wasSelected) {
+            $disabled = $request->session()->get(self::CART_DISABLED_PROMOTIONS_KEY, []);
+            $normalizedDisabled = array_map(fn ($value) => strtoupper((string) $value), $disabled);
+            if (!in_array($target, $normalizedDisabled, true)) {
+                $disabled[] = $target;
+                $request->session()->put(self::CART_DISABLED_PROMOTIONS_KEY, $disabled);
+            }
+            $message = 'Đã tắt khuyến mãi tự động.';
+        }
+
+        return redirect()->route('client.cart')->with('success', $message);
+    }
+
+    public function enablePromotion(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'promotion_id' => ['required', 'string'],
+        ]);
+
+        $target = strtoupper(trim($data['promotion_id']));
+        $disabled = $request->session()->get(self::CART_DISABLED_PROMOTIONS_KEY, []);
+        if (!empty($disabled)) {
+            $remaining = array_values(array_filter($disabled, fn ($value) => strtoupper((string) $value) !== $target));
+            if (count($remaining) !== count($disabled)) {
+                if (empty($remaining)) {
+                    $request->session()->forget(self::CART_DISABLED_PROMOTIONS_KEY);
+                } else {
+                    $request->session()->put(self::CART_DISABLED_PROMOTIONS_KEY, $remaining);
+                }
+            }
+        }
+
+        return redirect()->route('client.cart')->with('success', 'Đã bật lại khuyến mãi tự động.');
     }
 
     public function checkout(Request $request): View|RedirectResponse
@@ -193,7 +249,8 @@ class ClientController extends Controller
 
         $promotions = $this->dataService->fetchPromotions(true);
         $selectedIds = $request->session()->get(self::CART_SELECTED_PROMOTIONS_KEY, []);
-        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedIds);
+        $disabledIds = $request->session()->get(self::CART_DISABLED_PROMOTIONS_KEY, []);
+        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedIds, $disabledIds);
 
         $summary = $this->promotionEngine->calculate($items, $activePromotions, [
             'shipping_fee' => 15000,
@@ -223,7 +280,8 @@ class ClientController extends Controller
 
         $promotions = $this->dataService->fetchPromotions(true);
         $selectedIds = $request->session()->get(self::CART_SELECTED_PROMOTIONS_KEY, []);
-        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedIds);
+        $disabledIds = $request->session()->get(self::CART_DISABLED_PROMOTIONS_KEY, []);
+        $activePromotions = $this->filterPromotionsForCart($promotions, $selectedIds, $disabledIds);
 
         $summary = $this->promotionEngine->calculate($items, $activePromotions, [
             'shipping_fee' => 15000,
@@ -246,6 +304,7 @@ class ClientController extends Controller
 
         $this->storeCartItems($request, []);
         $request->session()->forget(self::CART_SELECTED_PROMOTIONS_KEY);
+        $request->session()->forget(self::CART_DISABLED_PROMOTIONS_KEY);
 
         return redirect()->route('client.orders')->with('success', 'Đặt hàng thành công.');
     }
@@ -315,6 +374,7 @@ class ClientController extends Controller
 
         $this->storeCartItems($request, $cartItems);
         $request->session()->forget(self::CART_SELECTED_PROMOTIONS_KEY);
+        $request->session()->forget(self::CART_DISABLED_PROMOTIONS_KEY);
 
         return redirect()->route('client.cart')->with('success', 'Đã thêm sản phẩm từ đơn hàng vào giỏ.');
     }
@@ -339,12 +399,84 @@ class ClientController extends Controller
      */
     protected function getCartItems(Request $request): array
     {
-        return $request->session()->get('cart.items', []);
+        $items = $request->session()->get('cart.items', []);
+        if (empty($items)) {
+            return [];
+        }
+
+        $hydrated = $this->hydrateCartItems($items);
+        if ($hydrated !== $items) {
+            $request->session()->put('cart.items', $hydrated);
+        }
+
+        return $hydrated;
     }
 
     protected function storeCartItems(Request $request, array $items): void
     {
-        $request->session()->put('cart.items', $items);
+        $request->session()->put('cart.items', $this->hydrateCartItems($items));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    protected function hydrateCartItems(array $items): array
+    {
+        if (empty($items)) {
+            return [];
+        }
+
+        foreach ($items as &$item) {
+            $productId = $item['product_id'] ?? null;
+            if (!$productId) {
+                continue;
+            }
+
+            $needsLookup = false;
+            $imageUrl = $item['image_url'] ?? null;
+            if ($imageUrl === null || $imageUrl === '' || str_contains((string) $imageUrl, 'placehold.co')) {
+                $needsLookup = true;
+            }
+
+            if (empty($item['name']) || $item['name'] === $productId) {
+                $needsLookup = true;
+            }
+
+            if (!isset($item['price']) || (int) $item['price'] <= 0) {
+                $needsLookup = true;
+            }
+
+            if (!$needsLookup) {
+                continue;
+            }
+
+            $cacheKey = strtoupper((string) $productId);
+            if (!array_key_exists($cacheKey, $this->productCache)) {
+                $this->productCache[$cacheKey] = $this->dataService->fetchProduct((string) $productId);
+            }
+
+            $product = $this->productCache[$cacheKey];
+            if (!$product) {
+                continue;
+            }
+
+            if (empty($item['name']) || $item['name'] === $productId) {
+                $item['name'] = $product->name ?? $productId;
+            }
+
+            if (!isset($item['price']) || (int) $item['price'] <= 0) {
+                $item['price'] = (int) ($product->price ?? 0);
+            }
+
+            $productImage = $product->image_url ?? null;
+            if ($productImage) {
+                $item['image_url'] = $productImage;
+            }
+        }
+        unset($item);
+
+        return array_values($items);
     }
 
     /**
@@ -448,12 +580,26 @@ class ClientController extends Controller
     /**
      * @param  array<int, Promotion>  $promotions
      * @param  array<int, string>  $selectedIds
+     * @param  array<int, string>  $disabledIds
      * @return array<int, Promotion>
      */
-    protected function filterPromotionsForCart(array $promotions, array $selectedIds): array
+    protected function filterPromotionsForCart(array $promotions, array $selectedIds, array $disabledIds = []): array
     {
+        $disabledLookup = array_map(fn ($value) => strtoupper((string) $value), $disabledIds);
+        $disabledLookup = array_values(array_unique($disabledLookup));
+
+        $isDisabled = function (Promotion $promotion) use ($disabledLookup): bool {
+            foreach ($this->promotionIdentifiers($promotion) as $identifier) {
+                if (in_array($identifier, $disabledLookup, true)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
         if (empty($selectedIds)) {
-            return $promotions;
+            return array_values(array_filter($promotions, fn (Promotion $promotion) => !$isDisabled($promotion)));
         }
 
         $needle = array_map(fn ($value) => strtoupper((string) $value), $selectedIds);
@@ -461,14 +607,18 @@ class ClientController extends Controller
 
         foreach ($promotions as $promotion) {
             foreach ($this->promotionIdentifiers($promotion) as $identifier) {
-                if (in_array($identifier, $needle, true)) {
+                if (in_array($identifier, $needle, true) && !in_array($identifier, $disabledLookup, true)) {
                     $filtered[] = $promotion;
                     break;
                 }
             }
         }
 
-        return empty($filtered) ? $promotions : $filtered;
+        if (empty($filtered)) {
+            return array_values(array_filter($promotions, fn (Promotion $promotion) => !$isDisabled($promotion)));
+        }
+
+        return $filtered;
     }
 
     /**
