@@ -136,6 +136,9 @@ CREATE TABLE IF NOT EXISTS orders (
   promo_id text,
   applied_tier int,
   note text,
+  customer_name text,
+  customer_phone text,
+  shipping_address text,
   PRIMARY KEY ((user_id), created_at, order_id)
 ) WITH CLUSTERING ORDER BY (created_at DESC, order_id ASC);
 
@@ -151,7 +154,10 @@ CREATE TABLE IF NOT EXISTS orders_by_id (
   status text,
   promo_id text,
   applied_tier int,
-  note text
+  note text,
+  customer_name text,
+  customer_phone text,
+  shipping_address text
 );
 
 -- ===============================
@@ -201,16 +207,16 @@ INSERT INTO users_by_email (email, user_id, name, password, role, created_at) VA
 INSERT INTO users_by_email (email, user_id, name, password, role, created_at) VALUES ('admin@promoshop.vn', 'USR-ADMIN', 'Quản trị viên', '7676aaafb027c825bd9abab78b234070e702752f625b752e55e55b48e607e358', 'admin', toTimestamp(now()));
 
 -- Sản phẩm
-INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Milk Tea', 'MT001', 'Trà sữa trân châu đường đen', 45000, 120, 'https://images.promoshop.vn/products/mt001.jpg', 'active', toTimestamp(now()));
-INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Milk Tea', 'MT002', 'Trà sữa matcha kem cheese', 52000, 85, 'https://images.promoshop.vn/products/mt002.jpg', 'active', toTimestamp(now()));
-INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Coffee', 'CF001', 'Cà phê sữa đá Sài Gòn', 39000, 150, 'https://images.promoshop.vn/products/cf001.jpg', 'active', toTimestamp(now()));
-INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Coffee', 'CF002', 'Latte caramel nóng', 59000, 60, 'https://images.promoshop.vn/products/cf002.jpg', 'active', toTimestamp(now()));
-INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Bakery', 'BK001', 'Bánh croissant bơ Pháp', 32000, 45, 'https://images.promoshop.vn/products/bk001.jpg', 'active', toTimestamp(now()));
-INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('MT001', 'Milk Tea', 'Trà sữa trân châu đường đen', 45000, 120, 'https://images.promoshop.vn/products/mt001.jpg', 'active', toTimestamp(now()));
-INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('MT002', 'Milk Tea', 'Trà sữa matcha kem cheese', 52000, 85, 'https://images.promoshop.vn/products/mt002.jpg', 'active', toTimestamp(now()));
-INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('CF001', 'Coffee', 'Cà phê sữa đá Sài Gòn', 39000, 150, 'https://images.promoshop.vn/products/cf001.jpg', 'active', toTimestamp(now()));
-INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('CF002', 'Coffee', 'Latte caramel nóng', 59000, 60, 'https://images.promoshop.vn/products/cf002.jpg', 'active', toTimestamp(now()));
-INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('BK001', 'Bakery', 'Bánh croissant bơ Pháp', 32000, 45, 'https://images.promoshop.vn/products/bk001.jpg', 'active', toTimestamp(now()));
+INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Milk Tea', 'MT001', 'Trà sữa trân châu đường đen', 45000, 120, 'https://th.bing.com/th/id/OIP.qbDZXn8la8wCHMRvEpGw8QHaET?w=235&h=180&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Milk Tea', 'MT002', 'Trà sữa matcha kem cheese', 52000, 85, 'https://th.bing.com/th/id/OIP.SPG75TMbuz8SF5R5riTWowHaFP?w=272&h=193&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Coffee', 'CF001', 'Cà phê sữa đá Sài Gòn', 39000, 150, 'https://th.bing.com/th/id/OIP.-kwobbU7-_CkAir5ejO4vgHaFy?w=218&h=180&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Coffee', 'CF002', 'Latte caramel nóng', 59000, 60, 'https://parisdeli.vn/wp-content/uploads/2024/03/19-scaled.jpg', 'active', toTimestamp(now()));
+INSERT INTO products (category, product_id, name, price, stock, image_url, status, updated_at) VALUES ('Bakery', 'BK001', 'Bánh croissant bơ Pháp', 32000, 45, 'https://tse4.mm.bing.net/th/id/OIP.0WYZmJ06e8mTF7jbVj27RgHaEK?rs=1&pid=ImgDetMain&o=7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('MT001', 'Milk Tea', 'Trà sữa trân châu đường đen', 45000, 120, 'https://th.bing.com/th/id/OIP.qbDZXn8la8wCHMRvEpGw8QHaET?w=235&h=180&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('MT002', 'Milk Tea', 'Trà sữa matcha kem cheese', 52000, 85, 'https://th.bing.com/th/id/OIP.SPG75TMbuz8SF5R5riTWowHaFP?w=272&h=193&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('CF001', 'Coffee', 'Cà phê sữa đá Sài Gòn', 39000, 150, 'https://th.bing.com/th/id/OIP.-kwobbU7-_CkAir5ejO4vgHaFy?w=218&h=180&c=7&r=0&o=7&dpr=1.3&pid=1.7&rm=3', 'active', toTimestamp(now()));
+INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('CF002', 'Coffee', 'Latte caramel nóng', 59000, 60, 'https://parisdeli.vn/wp-content/uploads/2024/03/19-scaled.jpg', 'active', toTimestamp(now()));
+INSERT INTO products_by_id (product_id, category, name, price, stock, image_url, status, updated_at) VALUES ('BK001', 'Bakery', 'Bánh croissant bơ Pháp', 32000, 45, 'https://tse4.mm.bing.net/th/id/OIP.0WYZmJ06e8mTF7jbVj27RgHaEK?rs=1&pid=ImgDetMain&o=7&rm=3', 'active', toTimestamp(now()));
 
 -- Khuyến mãi
 INSERT INTO promotions (promo_id, title, type, min_order, discount_percent, reward_type, max_discount_amount, start_date, end_date, status, auto_apply, stackable, created_at, updated_at) VALUES ('SPRING2025', 'Spring Treats - Giảm giá thức uống', 'tiered', 0, null, 'discount', 70000, '2025-03-01', '2025-06-30', 'active', true, false, toTimestamp(now()), toTimestamp(now()));
@@ -228,49 +234,48 @@ INSERT INTO promotion_tiers (promo_id, tier_level, label, min_value, discount_pe
 INSERT INTO promotion_tiers (promo_id, tier_level, label, min_value, discount_percent, discount_amount, freeship, gift_product_id, gift_quantity, combo_description, metadata) VALUES ('FREESHIP200', 2, 'Freeship + giảm 30K', 350000, 0, 30000, true, null, null, null, null);
 INSERT INTO promotion_tiers (promo_id, tier_level, label, min_value, discount_percent, discount_amount, freeship, gift_product_id, gift_quantity, combo_description, metadata) VALUES ('COMBOCAFE', 1, 'Combo cà phê + bánh', 90000, 0, 15000, false, 'BK001', 1, 'Giảm 15K khi mua CF002 kèm BK001', null);
 
--- >> CẬP NHẬT DỮ LIỆU CHO BẢNG MỚI <<
--- Ghi vào bảng tra cứu ngược khi tạo khuyến mãi COMBOCAFE
+
 INSERT INTO promotions_by_product (product_id, promo_id, title, end_date) VALUES ('CF002', 'COMBOCAFE', 'Combo cà phê + bánh croissant', '2025-09-30');
 INSERT INTO promotions_by_product (product_id, promo_id, title, end_date) VALUES ('BK001', 'COMBOCAFE', 'Combo cà phê + bánh croissant', '2025-09-30');
 
--- Đơn hàng (sử dụng UDT)
-INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note)
+
+INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
 VALUES ('USR-ALICE', toTimestamp(now()), 'ORD-0001', [
   {product_id: 'MT001', name: 'Trà sữa trân châu', price: 45000, quantity: 2},
   {product_id: 'CF001', name: 'Cà phê sữa đá', price: 39000, quantity: 1}
-], 129000, 12900, 116100, 15000, 'completed', 'SPRING2025', 1, 'Nhận hàng tại quầy');
+], 129000, 12900, 116100, 15000, 'completed', 'SPRING2025', 1, 'Nhận hàng tại quầy', 'Alice Nguyen', '0901 234 567', '123 Lê Lợi, Quận 1, TP.HCM', '[{"promo_id":"SPRING2025","title":"Spring Treats","tier_level":1,"tier_label":"Giảm 10% từ 2 món","discount_amount":12900,"shipping_discount":0}]', '[]');
 
-INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note)
+INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
 VALUES ('ORD-0001', 'USR-ALICE', toTimestamp(now()), [
   {product_id: 'MT001', name: 'Trà sữa trân châu', price: 45000, quantity: 2},
   {product_id: 'CF001', name: 'Cà phê sữa đá', price: 39000, quantity: 1}
-], 129000, 12900, 116100, 15000, 'completed', 'SPRING2025', 1, 'Nhận hàng tại quầy');
+], 129000, 12900, 116100, 15000, 'completed', 'SPRING2025', 1, 'Nhận hàng tại quầy', 'Alice Nguyen', '0901 234 567', '123 Lê Lợi, Quận 1, TP.HCM', '[{"promo_id":"SPRING2025","title":"Spring Treats","tier_level":1,"tier_label":"Giảm 10% từ 2 món","discount_amount":12900,"shipping_discount":0}]', '[]');
 
 
-INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note)
+INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
 VALUES ('USR-BOB', toTimestamp(now()), 'ORD-0002', [
   {product_id: 'MT002', name: 'Trà sữa matcha', price: 52000, quantity: 3},
   {product_id: 'BK001', name: 'Croissant bơ', price: 32000, quantity: 2}
-], 220000, 44000, 176000, 0, 'shipping', 'SPRING2025', 2, 'Giao buổi sáng');
+], 220000, 44000, 176000, 0, 'shipping', 'SPRING2025', 2, 'Giao buổi sáng', 'Bob Tran', '0909 888 777', '45 Nguyễn Huệ, Quận 1, TP.HCM', '[{"promo_id":"SPRING2025","title":"Spring Treats","tier_level":2,"tier_label":"Giảm 20% đơn từ 3 món","discount_amount":44000,"shipping_discount":0}]', '[]');
 
-INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note)
+INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
 VALUES ('ORD-0002', 'USR-BOB', toTimestamp(now()), [
   {product_id: 'MT002', name: 'Trà sữa matcha', price: 52000, quantity: 3},
   {product_id: 'BK001', name: 'Croissant bơ', price: 32000, quantity: 2}
-], 220000, 44000, 176000, 0, 'shipping', 'SPRING2025', 2, 'Giao buổi sáng');
+], 220000, 44000, 176000, 0, 'shipping', 'SPRING2025', 2, 'Giao buổi sáng', 'Bob Tran', '0909 888 777', '45 Nguyễn Huệ, Quận 1, TP.HCM', '[{"promo_id":"SPRING2025","title":"Spring Treats","tier_level":2,"tier_label":"Giảm 20% đơn từ 3 món","discount_amount":44000,"shipping_discount":0}]', '[]');
 
 
-INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note)
+INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
 VALUES ('USR-BOB', toTimestamp(now()), 'ORD-0003', [
   {product_id: 'CF002', name: 'Latte caramel', price: 59000, quantity: 2},
   {product_id: 'BK001', name: 'Croissant bơ', price: 32000, quantity: 1}
-], 150000, 30000, 120000, 0, 'completed', 'COMBOCAFE', 1, 'Tặng quà sinh nhật');
+], 150000, 30000, 120000, 0, 'completed', 'COMBOCAFE', 1, 'Tặng quà sinh nhật', 'Bob Tran', '0909 888 777', '45 Nguyễn Huệ, Quận 1, TP.HCM', '[{"promo_id":"COMBOCAFE","title":"Combo cà phê + bánh croissant","tier_level":1,"tier_label":"Combo cà phê kèm bánh","discount_amount":30000,"shipping_discount":0}]', '[{"description":"Tặng croissant","quantity":1}]');
 
-INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note)
+INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount, final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
 VALUES ('ORD-0003', 'USR-BOB', toTimestamp(now()), [
   {product_id: 'CF002', name: 'Latte caramel', price: 59000, quantity: 2},
   {product_id: 'BK001', name: 'Croissant bơ', price: 32000, quantity: 1}
-], 150000, 30000, 120000, 0, 'completed', 'COMBOCAFE', 1, 'Tặng quà sinh nhật');
+], 150000, 30000, 120000, 0, 'completed', 'COMBOCAFE', 1, 'Tặng quà sinh nhật', 'Bob Tran', '0909 888 777', '45 Nguyễn Huệ, Quận 1, TP.HCM', '[{"promo_id":"COMBOCAFE","title":"Combo cà phê + bánh croissant","tier_level":1,"tier_label":"Combo cà phê kèm bánh","discount_amount":30000,"shipping_discount":0}]', '[{"description":"Tặng croissant","quantity":1}]');
 
 
 -- Nhật ký khuyến mãi

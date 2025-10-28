@@ -352,6 +352,19 @@ class CassandraDataService
                 }
             }
 
+            foreach (['promotion_snapshot', 'gifts'] as $key) {
+                if (!array_key_exists($key, $payload)) {
+                    continue;
+                }
+                $value = $payload[$key];
+                if (is_string($value)) {
+                    $decoded = json_decode($value, true);
+                    $payload[$key] = is_array($decoded) ? $decoded : [];
+                } elseif (!is_array($value)) {
+                    $payload[$key] = [];
+                }
+            }
+
             return Order::from($payload);
         })->all();
     }

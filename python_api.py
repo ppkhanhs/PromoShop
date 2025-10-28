@@ -26,6 +26,30 @@ except KeyError:
 if _promotion_table:
     PROMOTION_HAS_DESCRIPTION = "description" in _promotion_table.columns
 
+ORDER_OPTIONAL_COLUMNS = {
+    "customer_name": "text",
+    "customer_phone": "text",
+    "shipping_address": "text",
+    "promotion_snapshot": "text",
+    "gifts": "text",
+}
+try:
+    _orders_keyspace = _metadata.keyspaces["promo_shop"]
+    _orders_table = _orders_keyspace.tables.get("orders")
+    _orders_by_id_table = _orders_keyspace.tables.get("orders_by_id")
+except KeyError:
+    _orders_table = None
+    _orders_by_id_table = None
+
+if _orders_table:
+    for column, cql_type in ORDER_OPTIONAL_COLUMNS.items():
+        if column not in _orders_table.columns:
+            session.execute(f"ALTER TABLE orders ADD {column} {cql_type}")
+if _orders_by_id_table:
+    for column, cql_type in ORDER_OPTIONAL_COLUMNS.items():
+        if column not in _orders_by_id_table.columns:
+            session.execute(f"ALTER TABLE orders_by_id ADD {column} {cql_type}")
+
 app = FastAPI(title="PromoShop Cassandra API", version="1.0.0")
 
 
@@ -646,6 +670,35 @@ def list_orders(user_id: Optional[str] = Query(None)):
     for row in rows:
         record = dict(row)
         record["items"] = deserialize_items(record.get("items"))
+        for key in ("promotion_snapshot", "gifts"):
+            value = record.get(key)
+            if isinstance(value, str) and value:
+                try:
+                    record[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    record[key] = []
+            elif value is None:
+                record[key] = []
+        if not record.get("promotion_snapshot"):
+            promo_id = record.get("promo_id")
+            if promo_id:
+                record["promotion_snapshot"] = [
+                    {
+                        "promo_id": promo_id,
+                        "title": promo_id,
+                        "tier_level": record.get("applied_tier"),
+                        "discount_amount": float(record.get("discount") or 0),
+                        "shipping_discount": 0,
+                    }
+                ]
+        if isinstance(record.get("discount"), Decimal):
+            record["discount"] = float(record["discount"])
+        if isinstance(record.get("total"), Decimal):
+            record["total"] = float(record["total"])
+        if isinstance(record.get("final_amount"), Decimal):
+            record["final_amount"] = float(record["final_amount"])
+        if isinstance(record.get("shipping_fee"), Decimal):
+            record["shipping_fee"] = float(record["shipping_fee"])
         data.append(record)
     return {"data": data}
 
@@ -655,12 +708,31 @@ def create_order(payload: OrderPayload):
     order_id = f"ORD-{uuid4().hex[:10].upper()}"
     now = datetime.utcnow()
     summary = payload.summary
+    promotion_snapshot = []
+    for applied in summary.get("applied_promotions", []):
+        promotion_data = applied.get("promotion", {})
+        tier_data = applied.get("tier", {})
+        promotion_snapshot.append(
+            {
+                "promo_id": promotion_data.get("promo_id"),
+                "title": promotion_data.get("title") or promotion_data.get("promo_id"),
+                "tier_level": tier_data.get("tier_level"),
+                "tier_label": tier_data.get("label"),
+                "discount_amount": applied.get("discount", 0),
+                "shipping_discount": applied.get("shipping_discount", 0),
+                "reward": applied.get("gift"),
+            }
+        )
+    gifts_data = summary.get("gifts", [])
+
+    promotion_snapshot_json = json.dumps(promotion_snapshot, ensure_ascii=False)
+    gifts_json = json.dumps(gifts_data, ensure_ascii=False)
 
     session.execute(
         """
         INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount,
-            shipping_fee, status, promo_id, applied_tier, note)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             payload.user_id or "GUEST",
@@ -675,13 +747,18 @@ def create_order(payload: OrderPayload):
             summary.get("applied_promotions", [{}])[0].get("promotion", {}).get("promo_id"),
             summary.get("applied_promotions", [{}])[0].get("tier", {}).get("tier_level"),
             payload.note,
+            payload.customer_name,
+            payload.customer_phone,
+            payload.shipping_address,
+            promotion_snapshot_json,
+            gifts_json,
         ),
     )
     session.execute(
         """
         INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount,
-            final_amount, shipping_fee, status, promo_id, applied_tier, note)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             order_id,
@@ -696,6 +773,11 @@ def create_order(payload: OrderPayload):
             summary.get("applied_promotions", [{}])[0].get("promotion", {}).get("promo_id"),
             summary.get("applied_promotions", [{}])[0].get("tier", {}).get("tier_level"),
             payload.note,
+            payload.customer_name,
+            payload.customer_phone,
+            payload.shipping_address,
+            promotion_snapshot_json,
+            gifts_json,
         ),
     )
 
