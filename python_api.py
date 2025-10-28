@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -15,6 +15,16 @@ from pydantic import BaseModel, EmailStr
 cluster = Cluster(["127.0.0.1"], port=9042)
 session = cluster.connect("promo_shop")
 session.row_factory = dict_factory
+
+_metadata = cluster.metadata
+_promotion_table = None
+PROMOTION_HAS_DESCRIPTION = False
+try:
+    _promotion_table = _metadata.keyspaces["promo_shop"].tables.get("promotions")
+except KeyError:
+    _promotion_table = None
+if _promotion_table:
+    PROMOTION_HAS_DESCRIPTION = "description" in _promotion_table.columns
 
 app = FastAPI(title="PromoShop Cassandra API", version="1.0.0")
 
@@ -49,6 +59,30 @@ def deserialize_items(payload: Optional[str]) -> List[Dict[str, Any]]:
         return json.loads(payload)
     except json.JSONDecodeError:
         return []
+
+
+def normalize_date_value(value: Optional[Any]) -> Optional[date]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text).date()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid date format: {value}",
+            ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Invalid date value",
+    )
 
 
 # =======================================
@@ -444,30 +478,64 @@ def get_promotion(promo_id: str, with_tiers: int = Query(1, ge=0, le=1)):
 
 @app.post("/api/v1/promotions", status_code=status.HTTP_201_CREATED)
 def create_promotion(payload: PromotionPayload):
-    session.execute(
-        """
-        INSERT INTO promotions (promo_id, title, type, min_order, discount_percent, reward_type,
-            max_discount_amount, start_date, end_date, status, auto_apply, stackable, description, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            payload.promo_id.upper(),
-            payload.title,
-            payload.type,
-            Decimal(payload.min_order or 0),
-            payload.discount_percent,
-            payload.reward_type,
-            Decimal(payload.max_discount_amount or 0),
-            payload.start_date,
-            payload.end_date,
-            payload.status,
-            payload.auto_apply,
-            payload.stackable,
-            payload.description,
-            datetime.utcnow(),
-            datetime.utcnow(),
-        ),
+    promo_id = payload.promo_id.upper()
+    now = datetime.utcnow()
+    start_date = normalize_date_value(payload.start_date)
+    end_date = normalize_date_value(payload.end_date)
+    min_order = Decimal(payload.min_order or 0)
+    max_discount = (
+        Decimal(payload.max_discount_amount)
+        if payload.max_discount_amount is not None
+        else None
     )
+
+    columns = [
+        "promo_id",
+        "title",
+        "type",
+        "min_order",
+        "discount_percent",
+        "reward_type",
+        "max_discount_amount",
+        "start_date",
+        "end_date",
+        "status",
+        "auto_apply",
+        "stackable",
+        "created_at",
+        "updated_at",
+    ]
+    values = [
+        promo_id,
+        payload.title,
+        payload.type,
+        min_order,
+        payload.discount_percent,
+        payload.reward_type,
+        max_discount,
+        start_date,
+        end_date,
+        payload.status,
+        payload.auto_apply,
+        payload.stackable,
+        now,
+        now,
+    ]
+    if PROMOTION_HAS_DESCRIPTION:
+        columns.insert(12, "description")
+        values.insert(12, payload.description)
+
+    column_sql = ", ".join(columns)
+    placeholders = ", ".join(["%s"] * len(columns))
+    session.execute(
+        f"""
+        INSERT INTO promotions ({column_sql})
+        VALUES ({placeholders})
+        """,
+        tuple(values),
+    )
+
+    status_start_date = start_date or datetime.utcnow().date()
     session.execute(
         """
         INSERT INTO promotions_by_status (status, start_date, promo_id, title, type, reward_type)
@@ -475,14 +543,26 @@ def create_promotion(payload: PromotionPayload):
         """,
         (
             payload.status,
-            payload.start_date or datetime.utcnow().date(),
-            payload.promo_id.upper(),
+            status_start_date,
+            promo_id,
             payload.title,
             payload.type,
             payload.reward_type,
         ),
     )
-    return {"data": payload.dict()}
+
+    response_payload = payload.copy(
+        update={
+            "promo_id": promo_id,
+            "min_order": int(min_order),
+            "max_discount_amount": int(max_discount)
+            if max_discount is not None
+            else None,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+        }
+    )
+    return {"data": response_payload.dict()}
 
 
 @app.put("/api/v1/promotions/{promo_id}")
