@@ -60,6 +60,7 @@ Logs & Dashboard
 Lưu ý bổ sung
 - Các thao tác ghi đều dùng câu lệnh `INSERT` của Cassandra (ghi đè hàng cũ cùng khóa).
 - API trả JSON theo chuẩn `{ "data": ... }` và dùng thông điệp lỗi tiếng Việt cho các trường hợp phổ biến.
+- API đã bật logging ở mức INFO (sử dụng Python `logging`); khi tạo đơn sẽ ghi log thành công/thất bại để hỗ trợ debug.
 
 Chức năng client (người dùng cuối)
 - Đăng ký tài khoản qua `POST /api/v1/auth/register`: gửi họ tên, email, mật khẩu; hệ thống kiểm tra trùng và trả về `user_id`.

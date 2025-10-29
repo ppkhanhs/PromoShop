@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import hashlib
 import json
+import logging
 
 from cassandra.cluster import Cluster
 from cassandra.query import dict_factory
@@ -51,6 +52,9 @@ if _orders_by_id_table:
             session.execute(f"ALTER TABLE orders_by_id ADD {column} {cql_type}")
 
 app = FastAPI(title="PromoShop Cassandra API", version="1.0.0")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("promo_shop.api")
 
 
 # =======================================
@@ -705,125 +709,144 @@ def list_orders(user_id: Optional[str] = Query(None)):
 
 @app.post("/api/v1/orders", status_code=status.HTTP_201_CREATED)
 def create_order(payload: OrderPayload):
+    user_ref = payload.user_id or "GUEST"
+    logger.info(
+        "Creating order request user_id=%s items=%d", user_ref, len(payload.items)
+    )
     order_id = f"ORD-{uuid4().hex[:10].upper()}"
-    now = datetime.utcnow()
-    summary = payload.summary
-    promotion_snapshot = []
-    for applied in summary.get("applied_promotions", []):
-        promotion_data = applied.get("promotion", {})
-        tier_data = applied.get("tier", {})
-        promotion_snapshot.append(
-            {
-                "promo_id": promotion_data.get("promo_id"),
-                "title": promotion_data.get("title") or promotion_data.get("promo_id"),
-                "tier_level": tier_data.get("tier_level"),
-                "tier_label": tier_data.get("label"),
-                "discount_amount": applied.get("discount", 0),
-                "shipping_discount": applied.get("shipping_discount", 0),
-                "reward": applied.get("gift"),
-            }
+    try:
+        now = datetime.utcnow()
+        summary = payload.summary
+        promotion_snapshot = []
+        for applied in summary.get("applied_promotions", []):
+            promotion_data = applied.get("promotion", {})
+            tier_data = applied.get("tier", {})
+            promotion_snapshot.append(
+                {
+                    "promo_id": promotion_data.get("promo_id"),
+                    "title": promotion_data.get("title")
+                    or promotion_data.get("promo_id"),
+                    "tier_level": tier_data.get("tier_level"),
+                    "tier_label": tier_data.get("label"),
+                    "discount_amount": applied.get("discount", 0),
+                    "shipping_discount": applied.get("shipping_discount", 0),
+                    "reward": applied.get("gift"),
+                }
+            )
+        gifts_data = summary.get("gifts", [])
+
+        promotion_snapshot_json = json.dumps(
+            promotion_snapshot, ensure_ascii=False
         )
-    gifts_data = summary.get("gifts", [])
+        gifts_json = json.dumps(gifts_data, ensure_ascii=False)
 
-    promotion_snapshot_json = json.dumps(promotion_snapshot, ensure_ascii=False)
-    gifts_json = json.dumps(gifts_data, ensure_ascii=False)
+        applied_promotions = summary.get("applied_promotions") or []
+        first_applied = applied_promotions[0] if applied_promotions else {}
+        primary_promotion = (first_applied.get("promotion") or {}).get("promo_id")
+        primary_tier = (first_applied.get("tier") or {}).get("tier_level")
 
-    applied_promotions = summary.get("applied_promotions") or []
-    first_applied = applied_promotions[0] if applied_promotions else {}
-    primary_promotion = (first_applied.get("promotion") or {}).get("promo_id")
-    primary_tier = (first_applied.get("tier") or {}).get("tier_level")
-
-    session.execute(
-        """
-        INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount,
-            shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            payload.user_id or "GUEST",
-            now,
-            order_id,
-            serialize_items(payload.items),
-            Decimal(summary.get("subtotal", 0)),
-            Decimal(summary.get("discount", 0)),
-            Decimal(summary.get("final_total", 0)),
-            Decimal(summary.get("final_shipping_fee", 0)),
-            "pending",
-            primary_promotion,
-            primary_tier,
-            payload.note,
-            payload.customer_name,
-            payload.customer_phone,
-            payload.shipping_address,
-            promotion_snapshot_json,
-            gifts_json,
-        ),
-    )
-    session.execute(
-        """
-        INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount,
-            final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            order_id,
-            payload.user_id or "GUEST",
-            now,
-            serialize_items(payload.items),
-            Decimal(summary.get("subtotal", 0)),
-            Decimal(summary.get("discount", 0)),
-            Decimal(summary.get("final_total", 0)),
-            Decimal(summary.get("final_shipping_fee", 0)),
-            "pending",
-            primary_promotion,
-            primary_tier,
-            payload.note,
-            payload.customer_name,
-            payload.customer_phone,
-            payload.shipping_address,
-            promotion_snapshot_json,
-            gifts_json,
-        ),
-    )
-
-    # ghi log khuyến mãi
-    for applied in summary.get("applied_promotions", []):
-        log_id = uuid4()
         session.execute(
             """
-            INSERT INTO promotion_logs (promo_id, applied_at, log_id, order_id, user_id,
-                tier_level, discount_amount, freeship, reward)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount,
+                shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                applied["promotion"].get("promo_id"),
+                user_ref,
                 now,
-                log_id,
                 order_id,
-                payload.user_id or "GUEST",
-                applied["tier"].get("tier_level"),
-                Decimal(applied.get("discount", 0)),
-                applied.get("shipping_discount", 0) > 0,
-                json.dumps(applied.get("gift"), ensure_ascii=False),
+                serialize_items(payload.items),
+                Decimal(summary.get("subtotal", 0)),
+                Decimal(summary.get("discount", 0)),
+                Decimal(summary.get("final_total", 0)),
+                Decimal(summary.get("final_shipping_fee", 0)),
+                "pending",
+                primary_promotion,
+                primary_tier,
+                payload.note,
+                payload.customer_name,
+                payload.customer_phone,
+                payload.shipping_address,
+                promotion_snapshot_json,
+                gifts_json,
             ),
         )
         session.execute(
             """
-            INSERT INTO promotion_logs_by_order (order_id, applied_at, log_id, promo_id,
-                tier_level, discount_amount)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount,
+                final_amount, shipping_fee, status, promo_id, applied_tier, note, customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 order_id,
+                user_ref,
                 now,
-                log_id,
-                applied["promotion"].get("promo_id"),
-                applied["tier"].get("tier_level"),
-                Decimal(applied.get("discount", 0)),
+                serialize_items(payload.items),
+                Decimal(summary.get("subtotal", 0)),
+                Decimal(summary.get("discount", 0)),
+                Decimal(summary.get("final_total", 0)),
+                Decimal(summary.get("final_shipping_fee", 0)),
+                "pending",
+                primary_promotion,
+                primary_tier,
+                payload.note,
+                payload.customer_name,
+                payload.customer_phone,
+                payload.shipping_address,
+                promotion_snapshot_json,
+                gifts_json,
             ),
         )
 
-    return {"data": {"order_id": order_id}}
+        # ghi log khuyến mãi
+        for applied in summary.get("applied_promotions", []):
+            log_id = uuid4()
+            session.execute(
+                """
+                INSERT INTO promotion_logs (promo_id, applied_at, log_id, order_id, user_id,
+                    tier_level, discount_amount, freeship, reward)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    applied["promotion"].get("promo_id"),
+                    now,
+                    log_id,
+                    order_id,
+                    user_ref,
+                    applied["tier"].get("tier_level"),
+                    Decimal(applied.get("discount", 0)),
+                    applied.get("shipping_discount", 0) > 0,
+                    json.dumps(applied.get("gift"), ensure_ascii=False),
+                ),
+            )
+            session.execute(
+                """
+                INSERT INTO promotion_logs_by_order (order_id, applied_at, log_id, promo_id,
+                    tier_level, discount_amount)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    order_id,
+                    now,
+                    log_id,
+                    applied["promotion"].get("promo_id"),
+                    applied["tier"].get("tier_level"),
+                    Decimal(applied.get("discount", 0)),
+                ),
+            )
+
+        logger.info("Order created successfully order_id=%s user_id=%s", order_id, user_ref)
+        return {"data": {"order_id": order_id}}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Failed to create order order_id=%s user_id=%s", order_id, user_ref
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể tạo đơn hàng. Vui lòng thử lại sau.",
+        ) from exc
 
 
 # =======================================
