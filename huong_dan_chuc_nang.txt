@@ -1,0 +1,94 @@
+Tổng quan
+- API FastAPI phục vụ quản lý khuyến mãi PromoShop, kết nối Cassandra keyspace `promo_shop`.
+- Sử dụng `dict_factory` để trả kết quả dạng dictionary và cố gắng đảm bảo các bảng có cột cần thiết ngay khi khởi động.
+- Tổ chức mã thành nhóm helper, schema (Pydantic) và từng nhóm endpoint REST.
+
+Khởi tạo & cấu hình Cassandra
+- Tạo kết nối `Cluster(["127.0.0.1"], port=9042)` và session trên keyspace `promo_shop`.
+- Kiểm tra bảng `promotions` để xác định có cột `description` hay không; khi tạo promotion sẽ chèn cột này nếu tồn tại.
+- Đảm bảo hai bảng `orders` và `orders_by_id` có các cột tùy chọn (`customer_name`, `customer_phone`, `shipping_address`, `promotion_snapshot`, `gifts`); thiếu thì tự động `ALTER TABLE`.
+
+Helper chính
+- `hash_password` và `verify_password` dùng SHA-256 để lưu/so sánh mật khẩu.
+- `to_decimal`, `serialize_items`, `deserialize_items` và `normalize_date_value` chuẩn hóa dữ liệu số, JSON và ngày tháng trước khi thao tác với CQL.
+
+Schema (Pydantic)
+- `RegisterPayload`, `LoginPayload` cho luồng đăng ký/đăng nhập.
+- `ProductPayload`, `PromotionPayload`, `TierPayload`, `OrderPayload` mô tả dữ liệu sản phẩm, khuyến mãi, tier và đơn hàng; bao gồm giá trị mặc định và ràng buộc kiểu.
+
+Auth
+- `POST /api/v1/auth/register`: nhận `RegisterPayload`, kiểm tra email trùng (bảng `users_by_email`), sinh `user_id`, băm mật khẩu và lưu vào `users` + `users_by_email`. Trả về `user_id`; lỗi trùng email trả 409.
+- `POST /api/v1/auth/login`: tìm người dùng theo email, kiểm tra mật khẩu; sai trả 401. Thành công trả token tạm (UUID) và thông tin user.
+
+Users
+- `GET /api/v1/users`: trả toàn bộ bản ghi từ `users`.
+- `GET /api/v1/users/{user_id}`: lấy chi tiết; không có trả 404.
+- `GET /api/v1/users/lookup?email=`: tìm theo email (bảng `users_by_email`); không có trả 404.
+- `POST /api/v1/users`: tạo tài khoản mới với payload tùy ý (dictionary), tự sinh mật khẩu nếu thiếu; ghi vào hai bảng giống đăng ký.
+- `PUT /api/v1/users/{user_id}`: cập nhật; giữ nguyên `created_at`, cho phép đổi email/mật khẩu/role; cập nhật cả hai bảng.
+- `DELETE /api/v1/users/{user_id}`: xóa khỏi `users` và `users_by_email` nếu tồn tại.
+
+Products
+- `GET /api/v1/products`: đọc danh sách từ `products_by_id`.
+- `GET /api/v1/products/{product_id}`: chi tiết; trả 404 nếu không có.
+- `POST /api/v1/products`: tạo sản phẩm mới; ghi song song vào `products` (phân vùng theo category) và `products_by_id`; ép kiểu giá sang `Decimal`.
+- `PUT /api/v1/products/{product_id}`: cập nhật, ghi đè cả hai bảng với payload mới.
+- `DELETE /api/v1/products/{product_id}`: xác định category hiện có rồi xóa khỏi `products` và `products_by_id`.
+
+Promotions
+- `GET /api/v1/promotions?with_tiers=`: lấy danh sách khuyến mãi; nếu `with_tiers=1` gọi helper `hydrate_promotion` để thêm danh sách tier liên quan.
+- `GET /api/v1/promotions/{promo_id}`: chi tiết; mặc định trả kèm tiers; không có trả 404.
+- `POST /api/v1/promotions`: chuẩn hóa ngày (ISO), ép số tiền tối thiểu/gới hạn giảm giá sang `Decimal`, xử lý cột `description` nếu có; ghi vào `promotions` và `promotions_by_status`. Trả về payload đã chuẩn hóa.
+- `PUT /api/v1/promotions/{promo_id}`: tái sử dụng logic tạo promotion bằng cách copy payload và ép promo_id mới.
+- `DELETE /api/v1/promotions/{promo_id}`: xóa khỏi `promotions`, `promotions_by_status`, `promotion_tiers`.
+
+Promotion tiers
+- `GET /api/v1/promotions/{promo_id}/tiers`: danh sách tier của chương trình.
+- `POST /api/v1/promotions/{promo_id}/tiers`: tạo tier mới với các trường min value, giảm giá, freeship, quà tặng; lưu vào `promotion_tiers`.
+- `PUT /api/v1/promotions/{promo_id}/tiers/{tier_level}`: cập nhật tier bằng cách gọi lại hàm tạo với `tier_level` mới.
+- `DELETE /api/v1/promotions/{promo_id}/tiers/{tier_level}`: xóa tier khỏi bảng.
+
+Orders
+- `GET /api/v1/orders?user_id=`: nếu có `user_id` đọc từ `orders`, ngược lại từ `orders_by_id`. Tái cấu trúc dữ liệu: chuyển `items` (JSON) và các trường decimal sang dạng Python float/list, tự dựng `promotion_snapshot` cơ bản nếu thiếu.
+- `POST /api/v1/orders`: sinh `order_id`, chuẩn hóa snapshot khuyến mãi và quà tặng (JSON string), ghi vào `orders` và `orders_by_id`. Lưu trạng thái ban đầu `pending`, kèm thông tin khách hàng, ghi nhận khuyến mãi chính áp dụng.
+- Khi tạo đơn, API cũng ghi log vào `promotion_logs` và `promotion_logs_by_order` cho từng khuyến mãi áp dụng (bao gồm freeship, quà tặng, discount).
+
+Logs & Dashboard
+- `GET /api/v1/promotion-logs`: nếu có `promo_id` lọc theo bảng `promotion_logs`, không thì trả dữ liệu từ `promotion_logs_by_order`.
+- `GET /api/v1/dashboard`: tổng hợp số lượng promotions, products, orders và tổng tiền giảm giá, đồng thời lấy top 5 khuyến mãi theo số lần dùng + tổng discount.
+
+Lưu ý bổ sung
+- Các thao tác ghi đều dùng câu lệnh `INSERT` của Cassandra (ghi đè hàng cũ cùng khóa).
+- API trả JSON theo chuẩn `{ "data": ... }` và dùng thông điệp lỗi tiếng Việt cho các trường hợp phổ biến.
+
+Chức năng client (người dùng cuối)
+- Đăng ký tài khoản qua `POST /api/v1/auth/register`: gửi họ tên, email, mật khẩu; hệ thống kiểm tra trùng và trả về `user_id`.
+- Đăng nhập bằng `POST /api/v1/auth/login`: nhận email/mật khẩu, trả về token tạm và thông tin hồ sơ để lưu phiên.
+- Tra cứu khuyến mãi: `GET /api/v1/promotions?with_tiers=1` cho phép client lấy danh sách khuyến mãi kèm các tier; `GET /api/v1/promotions/{promo_id}` để xem chi tiết một chương trình.
+- Xem sản phẩm: `GET /api/v1/products` trả danh sách, `GET /api/v1/products/{product_id}` trả chi tiết từng sản phẩm.
+- Đặt hàng: `POST /api/v1/orders` gửi thông tin khách hàng, giỏ hàng (`items`) và phần tổng kết (`summary` với khuyến mãi áp dụng). API trả mã đơn `order_id` và ghi nhận khuyến mãi sử dụng.
+- Tra cứu tình trạng đơn hàng cá nhân: `GET /api/v1/orders?user_id={USER_ID}` trả danh sách đơn theo người dùng, bao gồm chi tiết items, phí ship, discount.
+- Xem lịch sử khuyến mãi đã áp dụng: client có thể lấy log theo `promo_id` qua `GET /api/v1/promotion-logs?promo_id=...` để hiển thị lịch sử giảm giá liên quan.
+
+Chức năng admin (quản trị viên)
+- Quản lý người dùng:
+  - `GET /api/v1/users` xem toàn bộ user.
+  - `GET /api/v1/users/{user_id}` xem chi tiết một user; `GET /api/v1/users/lookup?email=` tra email.
+  - `POST /api/v1/users` tạo nhanh tài khoản (có thể sinh mật khẩu ngẫu nhiên).
+  - `PUT /api/v1/users/{user_id}` cập nhật thông tin, quyền hạn (`role`), mật khẩu.
+  - `DELETE /api/v1/users/{user_id}` xóa user khỏi cả hai bảng người dùng.
+- Quản lý sản phẩm:
+  - `POST /api/v1/products` tạo sản phẩm mới; cần cung cấp `product_id`, tên, giá, tồn kho, trạng thái.
+  - `PUT /api/v1/products/{product_id}` cập nhật thông tin sản phẩm.
+  - `DELETE /api/v1/products/{product_id}` gỡ sản phẩm khỏi hệ thống.
+- Quản lý chương trình khuyến mãi:
+  - `POST /api/v1/promotions` khởi tạo chương trình mới (thiết lập thời gian, điều kiện, mô tả, auto apply...).
+  - `PUT /api/v1/promotions/{promo_id}` cập nhật; `DELETE` xóa khỏi toàn bộ bảng liên quan.
+  - `GET /api/v1/promotions` cùng tham số `with_tiers` để kiểm tra chi tiết và trạng thái.
+- Quản lý tier khuyến mãi:
+  - `POST /api/v1/promotions/{promo_id}/tiers` thêm cấp bậc áp dụng (ngưỡng min value, giảm %, freeship, quà tặng).
+  - `PUT /api/v1/promotions/{promo_id}/tiers/{tier_level}` chỉnh sửa; `DELETE` xóa tier cụ thể.
+- Quản lý đơn hàng tổng thể: `GET /api/v1/orders` (không truyền `user_id`) trả toàn bộ đơn hàng để admin theo dõi, xuất báo cáo hoặc xử lý trạng thái.
+- Theo dõi hiệu quả khuyến mãi:
+  - `GET /api/v1/promotion-logs` xem toàn bộ log áp dụng (theo đơn).
+  - `GET /api/v1/dashboard` tổng hợp số liệu chính (tổng promotions, sản phẩm, đơn hàng, tiền giảm giá, top khuyến mãi).
