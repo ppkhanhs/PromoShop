@@ -728,6 +728,11 @@ def create_order(payload: OrderPayload):
     promotion_snapshot_json = json.dumps(promotion_snapshot, ensure_ascii=False)
     gifts_json = json.dumps(gifts_data, ensure_ascii=False)
 
+    applied_promotions = summary.get("applied_promotions") or []
+    first_applied = applied_promotions[0] if applied_promotions else {}
+    primary_promotion = (first_applied.get("promotion") or {}).get("promo_id")
+    primary_tier = (first_applied.get("tier") or {}).get("tier_level")
+
     session.execute(
         """
         INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount,
@@ -744,8 +749,8 @@ def create_order(payload: OrderPayload):
             Decimal(summary.get("final_total", 0)),
             Decimal(summary.get("final_shipping_fee", 0)),
             "pending",
-            summary.get("applied_promotions", [{}])[0].get("promotion", {}).get("promo_id"),
-            summary.get("applied_promotions", [{}])[0].get("tier", {}).get("tier_level"),
+            primary_promotion,
+            primary_tier,
             payload.note,
             payload.customer_name,
             payload.customer_phone,
@@ -770,8 +775,8 @@ def create_order(payload: OrderPayload):
             Decimal(summary.get("final_total", 0)),
             Decimal(summary.get("final_shipping_fee", 0)),
             "pending",
-            summary.get("applied_promotions", [{}])[0].get("promotion", {}).get("promo_id"),
-            summary.get("applied_promotions", [{}])[0].get("tier", {}).get("tier_level"),
+            primary_promotion,
+            primary_tier,
             payload.note,
             payload.customer_name,
             payload.customer_phone,

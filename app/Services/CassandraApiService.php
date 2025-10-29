@@ -6,6 +6,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 
 class CassandraApiService
 {
@@ -45,9 +46,11 @@ class CassandraApiService
         if (Arr::has($options, 'body')) {
             $httpOptions['body'] = Arr::get($options, 'body');
         } elseif (Arr::has($options, 'json')) {
-            $httpOptions['json'] = Arr::get($options, 'json');
+            $httpOptions['body'] = $this->encodeJsonPayload(Arr::get($options, 'json'));
+            $headers = $this->ensureJsonHeader($headers);
         } elseif (!empty($options['payload'])) {
-            $httpOptions['json'] = Arr::get($options, 'payload');
+            $httpOptions['body'] = $this->encodeJsonPayload(Arr::get($options, 'payload'));
+            $headers = $this->ensureJsonHeader($headers);
         }
 
         if ($timeout = Arr::get($options, 'timeout')) {
@@ -78,5 +81,39 @@ class CassandraApiService
         } catch (\Throwable $th) {
             return null;
         }
+    }
+
+    protected function encodeJsonPayload(mixed $payload): string
+    {
+        $flags = JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
+        if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+            $flags |= JSON_INVALID_UTF8_SUBSTITUTE;
+        } elseif (defined('JSON_INVALID_UTF8_IGNORE')) {
+            $flags |= JSON_INVALID_UTF8_IGNORE;
+        }
+
+        $encoded = json_encode($payload, $flags);
+        if ($encoded === false) {
+            throw new RuntimeException('Unable to encode payload to JSON: ' . json_last_error_msg());
+        }
+
+        return $encoded;
+    }
+
+    /**
+     * @param  array<string, mixed>  $headers
+     * @return array<string, mixed>
+     */
+    protected function ensureJsonHeader(array $headers): array
+    {
+        foreach ($headers as $name => $value) {
+            if (strtolower((string) $name) === 'content-type') {
+                return $headers;
+            }
+        }
+
+        $headers['Content-Type'] = 'application/json';
+
+        return $headers;
     }
 }
