@@ -1,0 +1,74 @@
+Luồng Truy Vấn Phía Client
+==========================
+
+1. Giỏ hàng (`ClientController@cart`)
+-------------------------------------
+- Lấy danh sách sản phẩm:
+  - API: `GET /api/v1/products`
+  - CQL: `SELECT * FROM products_by_id;`
+- Lấy danh sách khuyến mãi kèm các tầng:
+  - API: `GET /api/v1/promotions?with_tiers=1`
+  - CQL được thực thi:
+    ```sql
+    SELECT * FROM promotions;
+    SELECT * FROM promotion_tiers WHERE promo_id = ?;
+    SELECT * FROM promotion_configs WHERE promo_id = ?;
+    ```
+- Sau khi có dữ liệu, phía PHP chỉ lọc/tính toán lại, không truy vấn thêm.
+
+2. Thanh toán (`ClientController@checkout`, `submitCheckout`)
+------------------------------------------------------------
+- Trước khi hiển thị trang checkout vẫn dùng lại dữ liệu từ bước giỏ hàng.
+- Khi khách bấm “Đặt hàng”:
+  - API: `POST /api/v1/orders`
+  - CQL thực thi trong python_api:
+    ```sql
+    INSERT INTO orders (user_id, created_at, order_id, items, total, discount,
+        final_amount, shipping_fee, status, promo_id, applied_tier, note,
+        customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+    VALUES (...);
+
+    INSERT INTO orders_by_id (order_id, user_id, created_at, items, total, discount,
+        final_amount, shipping_fee, status, promo_id, applied_tier, note,
+        customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+    VALUES (...);
+
+    INSERT INTO promotion_logs (...);
+    INSERT INTO promotion_logs_by_order (...);
+    ```
+
+3. Lịch sử đơn hàng (`ClientController@orders`)
+-----------------------------------------------
+- API có tham số lọc:
+  ```http
+  GET /api/v1/orders?user_id={USER_ID}&status={STATUS}&q={KEYWORD}&date_from={YYYY-MM-DD}&date_to={YYYY-MM-DD}
+  ```
+  - `status`: pending | confirmed | completed | cancelled.
+  - `q`: tìm theo mã đơn, tên khách, điện thoại, mã khuyến mãi, sản phẩm.
+  - `date_from`, `date_to`: ngày ISO (`YYYY-MM-DD`).
+- CQL trong python_api:
+  ```sql
+  -- Khi truyền user_id
+  SELECT * FROM orders WHERE user_id = %s;
+
+  -- Khi không truyền user_id
+  SELECT * FROM orders_by_id;
+  ```
+  Sau đó Python lọc thêm theo trạng thái, từ khóa và khoảng thời gian rồi trả JSON.
+- Hủy đơn hàng (khi trạng thái còn pending):
+  - API: `PATCH /api/v1/orders/{order_id}/status`
+  - CQL:
+    ```sql
+    UPDATE orders_by_id SET status = ? WHERE order_id = ?;
+
+    INSERT INTO orders (user_id, created_at, order_id, items, total, discount,
+        final_amount, shipping_fee, status, promo_id, applied_tier, note,
+        customer_name, customer_phone, shipping_address, promotion_snapshot, gifts)
+    VALUES (...);
+    ```
+
+4. Truy vấn bổ trợ
+------------------
+- Lấy chi tiết đơn hàng (reorder, in hóa đơn): `GET /api/v1/orders?user_id={USER_ID}`
+- Các bảng Cassandra liên quan: `products_by_id`, `promotions`, `promotion_tiers`,
+  `promotion_configs`, `orders`, `orders_by_id`, `promotion_logs`, `promotion_logs_by_order`.

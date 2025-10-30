@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Cassandra\Order;
 use App\Models\Cassandra\Product;
 use App\Models\Cassandra\Promotion;
+use App\Models\Cassandra\PromoCode;
 use App\Models\Cassandra\PromotionLog;
 use App\Models\Cassandra\PromotionTier;
 use App\Models\Cassandra\User;
@@ -12,6 +13,11 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use RuntimeException;
 
+/**
+ * Cassandra API data facade.
+ *
+ * @method array<int, \App\Models\Cassandra\PromoCode> fetchPromoCodes(?string  = null)
+ */
 class CassandraDataService
 {
     public function __construct(protected CassandraApiService $api)
@@ -373,10 +379,46 @@ class CassandraDataService
     {
         $res = $this->api->request('POST', 'api/v1/orders', ['json' => $payload]);
         if (!in_array($res['status'], [200, 201], true)) {
+            logger()->error('Failed to create order via Cassandra API', [
+                'status' => $res['status'],
+                'body' => $res['body'],
+                'response' => $res['json'],
+            ]);
             return null;
         }
 
         return (array) Arr::get($res, 'json.data', []);
+    }
+
+    public function confirmOrder(string $orderId, array $payload = []): bool
+    {
+        $options = [];
+        if (!empty($payload)) {
+            $options['json'] = $payload;
+        }
+
+        $res = $this->api->request('POST', "api/v1/orders/{$orderId}/confirm", $options);
+        if ($res['status'] !== 200) {
+            logger()->error('Failed to confirm order via Cassandra API', [
+                'order_id' => $orderId,
+                'status' => $res['status'],
+                'body' => $res['body'],
+                'response' => $res['json'],
+            ]);
+            return false;
+        }
+
+        return true;
+    }
+
+    public function cancelOrder(string $orderId, ?string $note = null): bool
+    {
+        $payload = ['status' => 'cancelled'];
+        if ($note !== null && $note !== '') {
+            $payload['admin_note'] = $note;
+        }
+
+        return $this->confirmOrder($orderId, $payload);
     }
 
     /**
@@ -408,6 +450,83 @@ class CassandraDataService
     {
         $res = $this->api->request('GET', 'api/v1/dashboard');
         return (array) Arr::get($res, 'json.data', []);
+    }
+
+    /**
+     * @return array<int, PromoCode>
+     */
+    public function fetchPromoCodes(?string $promoId = null): array
+    {
+        $options = [];
+        if ($promoId) {
+            $options['query'] = ['promo_id' => $promoId];
+        }
+
+        $res = $this->api->request('GET', 'api/v1/promo-codes', $options);
+        $data = Arr::get($res, 'json.data', []);
+
+        return collect($data)
+            ->map(fn ($row) => PromoCode::from((array) $row))
+            ->all();
+    }
+
+    public function fetchPromoCodeByCode(string $code): ?PromoCode
+    {
+        $res = $this->api->request('GET', "api/v1/promo-codes/{$code}");
+        if ($res['status'] !== 200) {
+            return null;
+        }
+
+        return PromoCode::from((array) Arr::get($res, 'json.data', []));
+    }
+
+    public function createPromoCode(string $promoId, array $payload): ?PromoCode
+    {
+        $res = $this->api->request('POST', "api/v1/promotions/{$promoId}/codes", [
+            'json' => $payload,
+        ]);
+
+        if (!in_array($res['status'], [200, 201], true)) {
+            logger()->warning('Failed to create promo code', [
+                'promo_id' => $promoId,
+                'status' => $res['status'],
+                'body' => $res['body'],
+                'response' => $res['json'],
+            ]);
+            return null;
+        }
+
+        $created = Arr::get($res, 'json.data', []);
+        $first = (array) Arr::first($created);
+
+        return $first ? PromoCode::from($first) : null;
+    }
+
+    public function updatePromoCode(string $promoId, string $code, array $payload): ?PromoCode
+    {
+        $res = $this->api->request('PUT', "api/v1/promotions/{$promoId}/codes/{$code}", [
+            'json' => $payload,
+        ]);
+
+        if ($res['status'] !== 200) {
+            logger()->warning('Failed to update promo code', [
+                'promo_id' => $promoId,
+                'code' => $code,
+                'status' => $res['status'],
+                'body' => $res['body'],
+                'response' => $res['json'],
+            ]);
+            return null;
+        }
+
+        return PromoCode::from((array) Arr::get($res, 'json.data', []));
+    }
+
+    public function deletePromoCode(string $promoId, string $code): bool
+    {
+        $res = $this->api->request('DELETE', "api/v1/promotions/{$promoId}/codes/{$code}");
+
+        return $res['status'] === 204;
     }
 
     protected function normalizeDate(mixed $value): ?string

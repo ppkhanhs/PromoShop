@@ -4,6 +4,33 @@
 
 @php
     use Carbon\Carbon;
+
+    $statusLabels = $statusLabels ?? [
+        'pending' => 'Chờ duyệt',
+        'approved' => 'Đã duyệt',
+        'confirmed' => 'Đã xác nhận',
+        'processing' => 'Đang xử lý',
+        'shipped' => 'Đã gửi hàng',
+        'completed' => 'Hoàn thành',
+        'cancelled' => 'Đã hủy',
+    ];
+
+    $statusBadges = $statusBadges ?? [
+        'pending' => 'warning',
+        'approved' => 'primary',
+        'confirmed' => 'primary',
+        'processing' => 'info',
+        'shipped' => 'info',
+        'completed' => 'success',
+        'cancelled' => 'danger',
+    ];
+
+    $filters = $filters ?? [
+        'status' => '',
+        'keyword' => '',
+        'date_from' => null,
+        'date_to' => null,
+    ];
 @endphp
 
 @section('content')
@@ -55,6 +82,40 @@
         </div>
     </div>
 
+    <form action="{{ route('admin.orders.index') }}" method="GET" class="card shadow-sm mb-4">
+        <div class="card-body row g-3 align-items-end">
+            <div class="col-xl-4">
+                <label for="keyword" class="form-label">Từ khóa</label>
+                <input type="text" id="keyword" name="keyword" class="form-control"
+                       placeholder="Tìm theo mã đơn, tên khách, số điện thoại"
+                       value="{{ $filters['keyword'] }}">
+            </div>
+            <div class="col-md-4 col-xl-3">
+                <label for="status" class="form-label">Trạng thái</label>
+                <select id="status" name="status" class="form-select">
+                    <option value="">Tất cả</option>
+                    @foreach ($statusLabels as $value => $label)
+                        <option value="{{ $value }}" @selected($filters['status'] === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-4 col-xl-2">
+                <label for="date_from" class="form-label">Từ ngày</label>
+                <input type="date" id="date_from" name="date_from" class="form-control"
+                       value="{{ $filters['date_from'] }}">
+            </div>
+            <div class="col-md-4 col-xl-2">
+                <label for="date_to" class="form-label">Đến ngày</label>
+                <input type="date" id="date_to" name="date_to" class="form-control"
+                       value="{{ $filters['date_to'] }}">
+            </div>
+            <div class="col-md-4 col-xl-12 d-flex justify-content-end gap-2">
+                <a href="{{ route('admin.orders.index') }}" class="btn btn-light">Xóa bộ lọc</a>
+                <button type="submit" class="btn btn-primary">Lọc đơn hàng</button>
+            </div>
+        </div>
+    </form>
+
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white">
             <h2 class="h5 mb-0">Danh sách đơn hàng</h2>
@@ -83,7 +144,9 @@
                             } catch (\Throwable $th) {
                                 $createdAtFormatted = '---';
                             }
-                            $status = $order->get('status', 'pending');
+                            $status = strtolower($order->get('status', 'pending'));
+                            $badgeClass = $statusBadges[$status] ?? 'secondary';
+                            $statusLabel = $statusLabels[$status] ?? strtoupper($status);
                         @endphp
                         <tr>
                             <td class="fw-semibold">{{ $order->get('order_id') }}</td>
@@ -94,16 +157,26 @@
                             <td class="text-end">{{ number_format($order->get('final_amount') ?? 0, 0, ',', '.') }} ₫</td>
                             <td class="text-end text-success">-{{ number_format($order->get('discount') ?? 0, 0, ',', '.') }} ₫</td>
                             <td class="text-center">
-                                <span class="badge text-bg-{{ $status === 'completed' ? 'success' : ($status === 'pending' ? 'warning' : 'secondary') }}">
-                                    {{ strtoupper($status) }}
+                                <span class="badge text-bg-{{ $badgeClass }}">
+                                    {{ $statusLabel }}
                                 </span>
                             </td>
                             <td>{{ $order->get('promo_id') ?? '---' }}</td>
                             <td>{{ $createdAtFormatted }}</td>
                             <td class="text-end">
-                                <a href="{{ route('admin.orders.show', $order->get('order_id')) }}" class="btn btn-sm btn-outline-primary">
-                                    <i class="fa-solid fa-eye me-1"></i>Chi tiết
-                                </a>
+                                <div class="d-inline-flex gap-2">
+                                    @if ($status === 'pending')
+                                        <form action="{{ route('admin.orders.approve', $order->get('order_id')) }}" method="POST" class="d-inline">
+                                            @csrf
+                                            <button type="submit" class="btn btn-sm btn-success" title="Duyệt đơn này">
+                                                <i class="fa-solid fa-check me-1"></i>Duyệt
+                                            </button>
+                                        </form>
+                                    @endif
+                                    <a href="{{ route('admin.orders.show', $order->get('order_id')) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fa-solid fa-eye me-1"></i>Chi tiết
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     @empty

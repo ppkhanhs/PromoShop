@@ -23,6 +23,7 @@ Route::post('/cart/promo/enable', [ClientController::class, 'enablePromotion'])-
 
 Route::middleware('auth')->group(function () {
     Route::get('/orders', [ClientController::class, 'orders'])->name('client.orders');
+    Route::post('/orders/cancel', [ClientController::class, 'cancelOrder'])->name('client.orders.cancel');
     Route::post('/orders/reorder', [ClientController::class, 'reorderOrder'])->name('client.orders.reorder');
     Route::get('/orders/{order}/invoice', [ClientController::class, 'downloadInvoice'])->name('client.orders.invoice');
     Route::get('/orders/{order}/track', [ClientController::class, 'trackOrder'])->name('client.orders.track');
@@ -42,7 +43,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->n
 
 Route::prefix('admin')
     ->name('admin.')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->group(function () {
         Route::redirect('/', '/admin/dashboard');
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
@@ -61,6 +62,10 @@ Route::prefix('admin')
         Route::delete('promotions/{promotion}/tiers/{tier}', [PromotionController::class, 'destroyTier'])
             ->name('promotions.tiers.destroy');
 
+        Route::post('orders/{order}/approve', [OrderController::class, 'approve'])
+            ->name('orders.approve');
+        Route::post('orders/{order}/confirm', [OrderController::class, 'confirm'])
+            ->name('orders.confirm');
         Route::resource('orders', OrderController::class)->only(['index', 'show']);
 
         Route::resource('products', AdminProductController::class)->except(['show']);

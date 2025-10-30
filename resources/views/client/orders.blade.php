@@ -3,6 +3,23 @@
 @section('title', 'Đơn hàng của tôi - PromoShop')
 
 @section('content')
+    @php
+        $statusLabels = $statusLabels ?? [
+            'pending' => 'Chờ duyệt',
+            'approved' => 'Đã duyệt',
+            'confirmed' => 'Đã xác nhận',
+            'shipped' => 'Đã giao',
+            'cancelled' => 'Đã hủy',
+        ];
+        $statusBadges = $statusBadges ?? [
+            'pending' => 'warning',
+            'approved' => 'primary',
+            'confirmed' => 'primary',
+            'shipped' => 'info',
+            'cancelled' => 'danger',
+        ];
+    @endphp
+
     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
         <div>
             <h1 class="h3 mb-1">Đơn hàng của tôi</h1>
@@ -30,11 +47,12 @@
                 <label for="status" class="form-label">Trạng thái</label>
                 <select id="status" name="status" class="form-select">
                     <option value="">Tất cả</option>
-                    <option value="pending" @selected(request('status') === 'pending')>Chờ xử lý</option>
-                    <option value="processing" @selected(request('status') === 'processing')>Đang xử lý</option>
-                    <option value="shipped" @selected(request('status') === 'shipped')>Đã giao</option>
-                    <option value="completed" @selected(request('status') === 'completed')>Hoàn thành</option>
-                    <option value="cancelled" @selected(request('status') === 'cancelled')>Đã hủy</option>
+                    @foreach ($filterStatuses as $value)
+                        @php
+                            $label = $statusLabels[$value] ?? ucfirst($value);
+                        @endphp
+                        <option value="{{ $value }}" @selected(request('status') === $value)>{{ $label }}</option>
+                    @endforeach
                 </select>
             </div>
             <div class="col-md-4 col-xl-3">
@@ -61,6 +79,10 @@
             $giftSnapshot = collect($order->get('gifts') ?? []);
             $collapseId = 'order-detail-' . $orderId;
             $promoCollapseId = 'order-promo-' . $orderId;
+            $status = strtolower((string) ($order->get('status', 'pending')));
+            $badgeClass = $statusBadges[$status] ?? 'secondary';
+            $statusLabel = $statusLabels[$status] ?? ucfirst($status);
+            $isPending = $status === 'pending';
         @endphp
         <div class="card shadow-sm mb-4 position-relative">
             <div class="card-header bg-white d-flex justify-content-between align-items-start">
@@ -71,7 +93,7 @@
                         <span>Phương thức: {{ $order->get('payment_method', 'Thanh toán khi nhận hàng') }}</span>
                     </div>
                 </div>
-                <span class="badge text-bg-primary">{{ $order->get('status', 'pending') }}</span>
+                <span class="badge text-bg-{{ $badgeClass }}">{{ $statusLabel }}</span>
             </div>
             <div class="card-body">
                 <div class="d-flex flex-wrap gap-2 mb-3">
@@ -202,6 +224,15 @@
                     Cập nhật lần cuối: {{ $order->get('updated_at') ?? $order->get('created_at') }}
                 </div>
                 <div class="d-flex gap-2">
+                    @if ($isPending)
+                        <form action="{{ route('client.orders.cancel') }}" method="POST" onsubmit="return confirm('Bạn có chắc chắn muốn hủy đơn hàng này không?');">
+                            @csrf
+                            <input type="hidden" name="order_id" value="{{ $orderId }}">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                Hủy đơn
+                            </button>
+                        </form>
+                    @endif
                     <a href="{{ route('client.orders.invoice', ['order' => $orderId]) }}" class="btn btn-light btn-sm">
                         Tải hóa đơn
                     </a>
@@ -220,3 +251,4 @@
         </div>
     @endforelse
 @endsection
+

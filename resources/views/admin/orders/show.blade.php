@@ -12,6 +12,33 @@
         $createdAtFormatted = '---';
     }
     $subtotal = collect($items)->sum(fn ($item) => (int) ($item['price'] ?? 0) * (int) ($item['quantity'] ?? $item['qty'] ?? 1));
+    $status = strtolower($order->get('status', 'pending'));
+    $statusClasses = [
+        'pending' => 'warning',
+        'approved' => 'primary',
+        'confirmed' => 'primary',
+        'processing' => 'info',
+        'shipped' => 'info',
+        'completed' => 'success',
+        'cancelled' => 'danger',
+    ];
+    $badgeClass = $statusClasses[$status] ?? 'secondary';
+    $statusLabelLookup = $statusLabels ?? [
+        'pending' => 'Chờ duyệt',
+        'approved' => 'Đã duyệt',
+        'confirmed' => 'Đã xác nhận',
+        'processing' => 'Đang xử lý',
+        'shipped' => 'Đã gửi hàng',
+        'completed' => 'Hoàn thành',
+        'cancelled' => 'Đã hủy',
+    ];
+    $statusLabel = $statusLabelLookup[$status] ?? strtoupper($status);
+    $confirmedAt = $order->get('confirmed_at');
+    try {
+        $confirmedAtFormatted = $confirmedAt ? Carbon::parse($confirmedAt)->format('d/m/Y H:i') : null;
+    } catch (\Throwable $th) {
+        $confirmedAtFormatted = null;
+    }
 @endphp
 
 @section('content')
@@ -47,9 +74,12 @@
 
                         <dt class="col-5">Trạng thái</dt>
                         <dd class="col-7">
-                            <span class="badge text-bg-{{ $order->get('status') === 'completed' ? 'success' : 'warning' }}">
-                                {{ strtoupper($order->get('status', 'pending')) }}
+                            <span class="badge text-bg-{{ $badgeClass }}">
+                                {{ $statusLabel }}
                             </span>
+                            @if ($confirmedAtFormatted)
+                                <div class="text-muted small mt-1">Xác nhận: {{ $confirmedAtFormatted }}</div>
+                            @endif
                         </dd>
                     </dl>
                 </div>
@@ -88,6 +118,80 @@
                     </dl>
                 </div>
             </div>
+
+            @if (!in_array($status, ['completed', 'cancelled']))
+                <div class="card shadow-sm mt-4">
+                    <div class="card-header bg-white">
+                        <h2 class="h5 mb-0">Xác nhận đơn hàng</h2>
+                    </div>
+                    <div class="card-body">
+                        @if ($status === 'pending')
+                            <form method="POST" action="{{ route('admin.orders.approve', $order->get('order_id')) }}" class="d-flex align-items-center gap-2 mb-3">
+                                @csrf
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <i class="fa-solid fa-check me-1"></i>Duyệt nhanh
+                                </button>
+                                <span class="text-muted small">Đưa đơn sang trạng thái “Đã duyệt”.</span>
+                            </form>
+                        @endif
+                        @php
+                            $statusOptions = [
+                                'approved' => 'Duyệt đơn (chờ xử lý)',
+                                'confirmed' => 'Xác nhận đơn (đã liên hệ khách)',
+                                'processing' => 'Đang xử lý / đóng gói',
+                                'shipped' => 'Đã gửi hàng',
+                                'completed' => 'Hoàn thành',
+                                'cancelled' => 'Hủy đơn',
+                            ];
+                            $selectedStatus = old('status', $status === 'pending' ? 'approved' : $status);
+                        @endphp
+                        <form method="POST" action="{{ route('admin.orders.confirm', $order->get('order_id')) }}">
+                            @csrf
+                            <div class="mb-3">
+                                <label for="status" class="form-label">Trạng thái mới</label>
+                                <select id="status" name="status" class="form-select @error('status') is-invalid @enderror">
+                                    @foreach ($statusOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected($selectedStatus === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                @error('status')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="mb-3">
+                                <label for="admin_note" class="form-label">Ghi chú nội bộ</label>
+                                <textarea id="admin_note" name="admin_note" rows="3" class="form-control @error('admin_note') is-invalid @enderror" placeholder="Ví dụ: Đã gọi xác nhận với khách lúc 10h">{{ old('admin_note', $order->get('admin_note')) }}</textarea>
+                                @error('admin_note')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                                <div class="form-text">Ghi chú này chỉ hiển thị trong trang quản trị.</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa-solid fa-check me-1"></i>Cập nhật trạng thái
+                            </button>
+                        </form>
+                        @if ($confirmedAtFormatted)
+                            <div class="text-muted small mt-3">Lần xác nhận gần nhất: {{ $confirmedAtFormatted }}</div>
+                        @endif
+                    </div>
+                </div>
+            @else
+                <div class="card shadow-sm mt-4">
+                    <div class="card-header bg-white">
+                        <h2 class="h5 mb-0">Ghi chú xử lý</h2>
+                    </div>
+                    <div class="card-body">
+                        @if ($order->get('admin_note'))
+                            <p class="mb-0">{{ $order->get('admin_note') }}</p>
+                        @else
+                            <p class="text-muted mb-0">Không có ghi chú nội bộ.</p>
+                        @endif
+                        @if ($confirmedAtFormatted)
+                            <div class="text-muted small mt-3">Đã xác nhận: {{ $confirmedAtFormatted }}</div>
+                        @endif
+                    </div>
+                </div>
+            @endif
         </div>
 
         <div class="col-lg-8">
@@ -143,7 +247,7 @@
                         <dd class="col-9">{{ $order->get('note') ?? 'Không có ghi chú.' }}</dd>
                     </dl>
                     <div class="text-muted small">
-                        Nếu cần cập nhật trạng thái hoặc thông tin vận chuyển, vui lòng thao tác trực tiếp trên hệ thống xử lý đơn hàng.
+                        Sử dụng biểu mẫu <strong>Xác nhận đơn hàng</strong> ở cột bên để cập nhật trạng thái xử lý và ghi chú nội bộ.
                     </div>
                 </div>
             </div>

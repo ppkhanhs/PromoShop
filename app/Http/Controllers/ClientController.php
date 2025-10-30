@@ -16,6 +16,33 @@ class ClientController extends Controller
     private const CART_SELECTED_PROMOTIONS_KEY = 'cart.promotions.selected';
     private const CART_DISABLED_PROMOTIONS_KEY = 'cart.promotions.disabled';
 
+    private const ORDER_STATUS_LABELS = [
+        'pending' => 'Chờ duyệt',
+        'approved' => 'Đã duyệt',
+        'confirmed' => 'Đã xác nhận',
+        'processing' => 'Đang xử lý',
+        'shipped' => 'Đã giao',
+        'completed' => 'Hoàn thành',
+        'cancelled' => 'Đã hủy',
+    ];
+
+    private const FILTERABLE_ORDER_STATUSES = [
+        'pending',
+        'approved',
+        'shipped',
+        'cancelled',
+    ];
+
+    private const ORDER_STATUS_BADGES = [
+        'pending' => 'warning',
+        'approved' => 'primary',
+        'confirmed' => 'primary',
+        'processing' => 'info',
+        'shipped' => 'info',
+        'completed' => 'success',
+        'cancelled' => 'danger',
+    ];
+
     protected array $productCache = [];
 
     public function __construct(
@@ -321,7 +348,55 @@ class ClientController extends Controller
 
         return view('client.orders', [
             'orders' => $orders,
+            'statusLabels' => self::ORDER_STATUS_LABELS,
+            'statusBadges' => self::ORDER_STATUS_BADGES,
+            'filterStatuses' => self::FILTERABLE_ORDER_STATUSES,
         ]);
+    }
+
+    public function cancelOrder(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'order_id' => ['required', 'string'],
+        ]);
+
+        $user = Auth::user();
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        $target = strtoupper(trim($data['order_id']));
+        $orders = $this->dataService->fetchOrders((string) $user->getAuthIdentifier());
+
+        $order = collect($orders)->first(function ($order) use ($target) {
+            $orderId = strtoupper((string) ($order->get('order_id') ?? ''));
+            $orderCode = strtoupper((string) ($order->get('order_code') ?? ''));
+
+            return $orderId === $target || $orderCode === $target;
+        });
+
+        if (!$order) {
+            return redirect()->back()->with('error', 'Không tìm thấy đơn hàng để hủy.');
+        }
+
+        $status = strtolower((string) ($order->get('status') ?? ''));
+        if ($status !== 'pending') {
+            return redirect()->back()->with('warning', 'Chỉ có thể hủy đơn ở trạng thái chờ duyệt.');
+        }
+
+        $orderId = (string) ($order->get('order_id') ?? '');
+        if ($orderId === '') {
+            return redirect()->back()->with('error', 'Đơn hàng không hợp lệ.');
+        }
+
+        $note = sprintf('Khách hàng tự hủy đơn hàng lúc %s.', now()->format('d/m/Y H:i'));
+        if (!$this->dataService->cancelOrder($orderId, $note)) {
+            return redirect()->back()->with('error', 'Không thể hủy đơn hàng, vui lòng thử lại.');
+        }
+
+        return redirect()
+            ->route('client.orders')
+            ->with('success', 'Đã hủy đơn hàng thành công.');
     }
 
     public function reorderOrder(Request $request): RedirectResponse

@@ -1,11 +1,11 @@
+import hashlib
+import json
+import logging
+from collections import namedtuple
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-
-import hashlib
-import json
-import logging
 
 from cassandra.cluster import Cluster
 from cassandra.query import dict_factory
@@ -33,6 +33,8 @@ ORDER_OPTIONAL_COLUMNS = {
     "shipping_address": "text",
     "promotion_snapshot": "text",
     "gifts": "text",
+    "admin_note": "text",
+    "confirmed_at": "timestamp",
 }
 try:
     _orders_keyspace = _metadata.keyspaces["promo_shop"]
@@ -41,6 +43,37 @@ try:
 except KeyError:
     _orders_table = None
     _orders_by_id_table = None
+    _orders_keyspace = None
+
+ORDER_ITEM_UDT = None
+ORDERS_ITEMS_COLUMN_TYPE: Optional[str] = None
+ORDERS_BY_ID_ITEMS_COLUMN_TYPE: Optional[str] = None
+if _orders_keyspace:
+    ORDER_ITEM_UDT = _orders_keyspace.user_types.get("order_item")
+ORDER_ITEM_CLASS = None
+if ORDER_ITEM_UDT and ORDER_ITEM_UDT.field_names:
+    ORDER_ITEM_CLASS = namedtuple(
+        ORDER_ITEM_UDT.name or "order_item", ORDER_ITEM_UDT.field_names
+    )
+    try:
+        cluster.register_user_type("promo_shop", ORDER_ITEM_UDT.name, ORDER_ITEM_CLASS)
+    except Exception:
+        # Registration may fail if the type was already registered; continue using the namedtuple.
+        pass
+if _orders_table and "items" in _orders_table.columns:
+    ORDERS_ITEMS_COLUMN_TYPE = _orders_table.columns["items"].cql_type
+if _orders_by_id_table and "items" in _orders_by_id_table.columns:
+    ORDERS_BY_ID_ITEMS_COLUMN_TYPE = _orders_by_id_table.columns["items"].cql_type
+
+ALLOWED_ORDER_STATUSES = {
+    "pending",
+    "approved",
+    "confirmed",
+    "processing",
+    "shipped",
+    "completed",
+    "cancelled",
+}
 
 if _orders_table:
     for column, cql_type in ORDER_OPTIONAL_COLUMNS.items():
@@ -76,17 +109,165 @@ def to_decimal(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
-def serialize_items(items: List[Dict[str, Any]]) -> str:
-    return json.dumps(items, ensure_ascii=False)
+def _normalize_order_item_payload(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    product_id = (item.get("product_id") or item.get("sku") or "").strip()
+    if not product_id:
+        return None
+    name = (item.get("name") or product_id) or product_id
 
-
-def deserialize_items(payload: Optional[str]) -> List[Dict[str, Any]]:
-    if not payload:
-        return []
+    raw_price = item.get("price", item.get("unit_price", 0))
     try:
-        return json.loads(payload)
-    except json.JSONDecodeError:
+        price_decimal = Decimal(str(raw_price))
+    except Exception:
+        price_decimal = Decimal("0")
+
+    try:
+        quantity = int(item.get("quantity", item.get("qty", 1)))
+    except Exception:
+        quantity = 1
+    quantity = max(quantity, 1)
+
+    if price_decimal == price_decimal.to_integral():
+        price_json: Any = int(price_decimal)
+    else:
+        price_json = float(price_decimal)
+
+    return {
+        "product_id": product_id,
+        "name": str(name),
+        "price_decimal": price_decimal,
+        "price": price_json,
+        "quantity": quantity,
+    }
+
+
+def _format_order_items_for_column(
+    items: List[Dict[str, Any]],
+    column_type: Optional[str],
+) -> Any:
+    normalized = []
+    for item in items:
+        payload = _normalize_order_item_payload(item)
+        if payload:
+            normalized.append(payload)
+
+    if not normalized:
         return []
+
+    if column_type and ORDER_ITEM_CLASS and "order_item" in column_type:
+        return [
+            ORDER_ITEM_CLASS(
+                product_id=entry["product_id"],
+                name=entry["name"],
+                price=entry["price_decimal"],
+                quantity=entry["quantity"],
+            )
+            for entry in normalized
+        ]
+
+    simplified = [
+        {
+            "product_id": entry["product_id"],
+            "name": entry["name"],
+            "price": entry["price"],
+            "quantity": entry["quantity"],
+        }
+        for entry in normalized
+    ]
+
+    if column_type and column_type.startswith("list<"):
+        return simplified
+
+    return json.dumps(simplified, ensure_ascii=False)
+
+
+def serialize_items(items: List[Dict[str, Any]], column_type: Optional[str]) -> Any:
+    return _format_order_items_for_column(items, column_type)
+
+
+def deserialize_items(payload: Any) -> List[Dict[str, Any]]:
+    if payload in (None, "", []):
+        return []
+
+    if isinstance(payload, list):
+        items: List[Dict[str, Any]] = []
+        for entry in payload:
+            if hasattr(entry, "_asdict"):
+                data = entry._asdict()
+            elif isinstance(entry, dict):
+                data = entry
+            else:
+                continue
+
+            product_id = data.get("product_id")
+            if not product_id:
+                continue
+
+            name = data.get("name") or product_id
+            price = data.get("price", data.get("unit_price", 0))
+            if isinstance(price, Decimal):
+                price = float(price) if price != price.to_integral() else int(price)
+
+            quantity = data.get("quantity", data.get("qty", 1))
+            try:
+                quantity = int(quantity)
+            except Exception:
+                quantity = 1
+            quantity = max(quantity, 1)
+
+            items.append(
+                {
+                    "product_id": product_id,
+                    "name": name,
+                    "price": price,
+                    "quantity": quantity,
+                }
+            )
+        return items
+
+    if isinstance(payload, str):
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            return []
+        return decoded if isinstance(decoded, list) else []
+
+    return []
+
+
+def _apply_order_updates(
+    order_id: str, updates: Dict[str, Any], record: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    if record is None:
+        row = session.execute(
+            "SELECT * FROM orders_by_id WHERE order_id = %s", (order_id,)
+        ).one()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy đơn hàng",
+            )
+        record = dict(row) if isinstance(row, dict) else dict(row._asdict())
+    else:
+        record = dict(record) if isinstance(record, dict) else dict(record)
+
+    if not updates:
+        return record
+
+    set_clause = ", ".join(f"{column} = %s" for column in updates.keys())
+    values = list(updates.values())
+
+    session.execute(
+        f"UPDATE orders_by_id SET {set_clause} WHERE order_id = %s",
+        (*values, order_id),
+    )
+    session.execute(
+        f"UPDATE orders SET {set_clause} WHERE user_id = %s AND created_at = %s AND order_id = %s",
+        (*values, record["user_id"], record["created_at"], order_id),
+    )
+
+    record.update(updates)
+    return record
 
 
 def normalize_date_value(value: Optional[Any]) -> Optional[date]:
@@ -173,6 +354,11 @@ class OrderPayload(BaseModel):
     note: Optional[str] = None
     items: List[Dict[str, Any]]
     summary: Dict[str, Any]
+
+
+class OrderStatusPayload(BaseModel):
+    status: Optional[str] = None
+    admin_note: Optional[str] = None
 
 
 # =======================================
@@ -745,6 +931,11 @@ def create_order(payload: OrderPayload):
         primary_promotion = (first_applied.get("promotion") or {}).get("promo_id")
         primary_tier = (first_applied.get("tier") or {}).get("tier_level")
 
+        orders_items_value = serialize_items(payload.items, ORDERS_ITEMS_COLUMN_TYPE)
+        orders_by_id_items_value = serialize_items(
+            payload.items, ORDERS_BY_ID_ITEMS_COLUMN_TYPE
+        )
+
         session.execute(
             """
             INSERT INTO orders (user_id, created_at, order_id, items, total, discount, final_amount,
@@ -755,7 +946,7 @@ def create_order(payload: OrderPayload):
                 user_ref,
                 now,
                 order_id,
-                serialize_items(payload.items),
+                orders_items_value,
                 Decimal(summary.get("subtotal", 0)),
                 Decimal(summary.get("discount", 0)),
                 Decimal(summary.get("final_total", 0)),
@@ -781,7 +972,7 @@ def create_order(payload: OrderPayload):
                 order_id,
                 user_ref,
                 now,
-                serialize_items(payload.items),
+                orders_by_id_items_value,
                 Decimal(summary.get("subtotal", 0)),
                 Decimal(summary.get("discount", 0)),
                 Decimal(summary.get("final_total", 0)),
@@ -847,6 +1038,43 @@ def create_order(payload: OrderPayload):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể tạo đơn hàng. Vui lòng thử lại sau.",
         ) from exc
+
+
+@app.post("/api/v1/orders/{order_id}/confirm")
+def confirm_order(order_id: str, payload: OrderStatusPayload = Body(default=OrderStatusPayload())):
+    record = _apply_order_updates(order_id, {})
+
+    raw_status = (payload.status or "confirmed").strip().lower()
+    if raw_status not in ALLOWED_ORDER_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Trạng thái đơn hàng không hợp lệ.",
+        )
+
+    admin_note = payload.admin_note.strip() if payload.admin_note else None
+
+    updates: Dict[str, Any] = {"status": raw_status}
+    if admin_note is not None:
+        updates["admin_note"] = admin_note or None
+
+    if raw_status in {"approved", "confirmed", "processing", "shipped", "completed"}:
+        updates["confirmed_at"] = record.get("confirmed_at") or datetime.utcnow()
+    else:
+        updates["confirmed_at"] = None
+
+    updated = _apply_order_updates(order_id, updates, record)
+    logger.info(
+        "Order %s confirmed with status=%s", order_id, raw_status
+    )
+
+    return {
+        "data": {
+            "order_id": order_id,
+            "status": raw_status,
+            "admin_note": updated.get("admin_note"),
+            "confirmed_at": updated.get("confirmed_at"),
+        }
+    }
 
 
 # =======================================

@@ -68,7 +68,7 @@
             </div>
         </div>
         <div class="text-center">
-            <img src="https://images.promoshop.vn/banners/promo-dashboard.png"
+            <img src="https://tse4.mm.bing.net/th/id/OIP.UaXmo-YmEBb9PQS-opo7-AHaHa?w=1920&h=1920&rs=1&pid=ImgDetMain&o=7&rm=3"
                  alt="Promo dashboard"
                  class="img-fluid rounded-4 shadow-sm">
         </div>
