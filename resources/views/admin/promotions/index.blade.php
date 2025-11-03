@@ -10,6 +10,35 @@
         </a>
     </div>
 
+    @php
+        if (!function_exists('formatCassandraDate')) {
+            function formatCassandraDate($value) {
+                if (empty($value)) return '---';
+                try {
+                    if (is_object($value)) {
+                        if (method_exists($value, 'toDateTime')) {
+                            return \Carbon\Carbon::instance($value->toDateTime())->format('d/m/Y');
+                        }
+                        return (string)$value;
+                    }
+                    if (is_numeric($value)) {
+                        $val = (int)$value;
+                        if ($val < 1000000) {
+                            return \Carbon\Carbon::createFromTimestamp($val * 86400)->format('d/m/Y');
+                        }
+                        return \Carbon\Carbon::createFromTimestamp($val)->format('d/m/Y');
+                    }
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value)) {
+                        return \Carbon\Carbon::parse($value)->format('d/m/Y');
+                    }
+                    return $value;
+                } catch (\Exception $e) {
+                    return 'Không xác định';
+                }
+            }
+        }
+    @endphp
+
     <div class="card shadow-sm">
         <div class="table-responsive">
             <table class="table table-striped mb-0">
@@ -26,17 +55,22 @@
                 </thead>
                 <tbody>
                     @forelse ($promotions as $promotion)
+                        @php
+                            $start = formatCassandraDate($promotion->get('start_date'));
+                            $end = formatCassandraDate($promotion->get('end_date'));
+                            $status = $promotion->get('status');
+                        @endphp
                         <tr>
                             <td>{{ $promotion->get('promo_id') }}</td>
                             <td>{{ $promotion->get('title') }}</td>
                             <td>
-                                {{ $promotion->get('start_date') ?? '---' }}<br>
-                                <span class="text-muted small">{{ $promotion->get('end_date') ?? '---' }}</span>
+                                {{ $start }}<br>
+                                <span class="text-muted small">{{ $end }}</span>
                             </td>
                             <td>{{ ucfirst($promotion->get('type', 'tiered')) }}</td>
                             <td>
-                                <span class="badge text-bg-{{ $promotion->get('status') === 'active' ? 'success' : 'secondary' }}">
-                                    {{ $promotion->statusLabel() }}
+                                <span class="badge text-bg-{{ $status === 'active' ? 'success' : ($status === 'scheduled' ? 'warning' : 'secondary') }}">
+                                    {{ strtoupper($status ?? 'INACTIVE') }}
                                 </span>
                             </td>
                             <td class="text-end">{{ count($promotion->tiers()) }}</td>
@@ -60,4 +94,3 @@
         </div>
     </div>
 @endsection
-

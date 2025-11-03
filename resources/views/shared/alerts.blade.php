@@ -1,32 +1,63 @@
-@if (session('success'))
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        {{ session('success') }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
-    </div>
-@endif
+@if (session('success') || session('warning') || session('error') || $errors->any())
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        customClass: {
+            popup: 'colored-toast'
+        },
+        didOpen: toast => {
+            toast.style.marginTop = '50px';
+            toast.addEventListener('mouseenter', Swal.stopTimer)
+            toast.addEventListener('mouseleave', Swal.resumeTimer)
+        }
+    });
 
-@if (session('warning'))
-    <div class="alert alert-warning alert-dismissible fade show" role="alert">
-        {{ session('warning') }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
-    </div>
-@endif
+    @if (session('success'))
+        Toast.fire({
+            icon: 'success',
+            title: '{{ session('success') }}'
+        });
+    @endif
 
-@if (session('error'))
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        {{ session('error') }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
-    </div>
-@endif
+    @if (session('warning'))
+        Toast.fire({
+            icon: 'warning',
+            title: '{{ session('warning') }}'
+        });
+    @endif
 
-@if ($errors->any())
-    <div class="alert alert-danger">
-        <strong>Vui lòng kiểm tra lại:</strong>
-        <ul class="mb-0 ps-3">
-            @foreach ($errors->all() as $error)
-                <li>{{ $error }}</li>
-            @endforeach
-        </ul>
-    </div>
-@endif
+    @if (session('error'))
+        Toast.fire({
+            icon: 'error',
+            title: '{{ session('error') }}'
+        });
+    @endif
 
+    @if ($errors->any())
+        Toast.fire({
+            icon: 'error',
+            title: 'Vui lòng kiểm tra lại thông tin.'
+        });
+    @endif
+});
+</script>
+
+<style>
+.colored-toast.swal2-popup.swal2-toast {
+    background: #28a745 !important;
+    color: #fff !important;
+    font-weight: 500;
+}
+.colored-toast .swal2-title {
+    color: #fff !important;
+}
+.colored-toast .swal2-timer-progress-bar {
+    background: rgba(255, 255, 255, 0.8);
+}
+</style>
+@endif

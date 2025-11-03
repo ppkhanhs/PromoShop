@@ -371,11 +371,12 @@ h5 {
 
 .promo-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .promo-stat {
+  text-align: center;
   background: rgba(255, 255, 255, 0.8);
   border-radius: var(--radius-md);
   padding: 1.15rem 1.25rem;

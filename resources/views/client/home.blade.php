@@ -25,7 +25,7 @@
             }
         });
 
-        $bestSavingDisplay = $bestSaving > 0 ? number_format($bestSaving, 0, ',', '.') . ' VND' : '0 VND';
+        $bestSavingDisplay = $bestSaving > 0 ? number_format($bestSaving, 0, ',', '.') . ' đ' : '0 đ';
         $spotlights = $promotionList->take(3);
     @endphp
 
@@ -56,10 +56,6 @@
                 <div class="promo-stat">
                     <strong>{{ $productCount }}</strong>
                     <span>Sản phẩm đang mở bán</span>
-                </div>
-                <div class="promo-stat">
-                    <strong>{{ $categoryCount }}</strong>
-                    <span>Nhóm hàng được tự động gợi ý</span>
                 </div>
                 <div class="promo-stat">
                     <strong>{{ $bestSavingDisplay }}</strong>
@@ -95,14 +91,11 @@
                         $end = $promotion->get('end_date') ?? 'Không giới hạn';
                         $tiers = method_exists($promotion, 'tiers') ? collect($promotion->tiers() ?? []) : collect();
                     @endphp
-                    <article class="promo-card">
-                        <span class="promo-tag">{{ $promotion->statusLabel() }}</span>
+                    <article class="bg-white p-4 rounded-4">
+                        <span class="promo-tag mb-2">{{ $promotion->statusLabel() }}</span>
                         <h3 class="promo-card__title">
                             {{ $promotion->title ?? $promotion->get('title') ?? $promotion->promo_id ?? 'Khuyến mãi' }}
                         </h3>
-                        <p class="promo-card__period">
-                            Thời gian: {{ $start }} - {{ $end }}
-                        </p>
                         @if ($tiers->isNotEmpty())
                             <ul class="promo-tier-list">
                                 @foreach ($tiers as $tier)
@@ -138,10 +131,7 @@
     <section class="mb-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <h2 class="h4 mb-1" id="products">Sản phẩm gợi ý từ hệ thống</h2>
-                <p class="text-muted mb-0">
-                    Dữ liệu lấy từ bảng products và products_by_id trên Cassandra.
-                </p>
+                <h2 class="h4 mb-1" id="products">Danh sách sản phẩm</h2>
             </div>
             <span class="badge rounded-pill text-bg-light">
                 Tổng cộng {{ $productCount }} sản phẩm
@@ -174,14 +164,14 @@
                             </div>
                             <div class="promo-product-actions">
                                 <a href="{{ route('client.cart') }}" class="btn btn-outline-primary btn-sm">
-                                    Xem giỏ hàng
+                                    <i class="fa-solid fa-shopping-cart"></i>
                                 </a>
                                 <form action="{{ route('client.cart.add') }}" method="POST">
                                     @csrf
                                     <input type="hidden" name="product_id" value="{{ $product->product_id }}">
                                     <input type="hidden" name="quantity" value="1">
                                     <button type="submit" class="btn btn-primary btn-sm">
-                                        Thêm vào giỏ
+                                        <i class="fas fa-plus me-1"></i> Thêm vào giỏ
                                     </button>
                                 </form>
                             </div>
@@ -190,38 +180,5 @@
                 @endforeach
             </div>
         @endif
-    </section>
-
-    <section class="mb-4">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body d-md-flex align-items-center gap-4">
-                <div class="flex-shrink-0">
-                    <span class="badge bg-primary-subtle text-primary fw-semibold px-3 py-2">
-                        Cassandra funnel
-                    </span>
-                    <h3 class="h5 mt-3">Áp dụng ưu đãi trong 3 bước</h3>
-                </div>
-                <div class="d-flex flex-column flex-md-row gap-3">
-                    <div class="promo-recommend flex-fill">
-                        <strong>1. Chọn sản phẩm</strong>
-                        <span class="text-muted small">
-                            Lấy danh sách từ bảng products để hiển thị gợi ý danh mục.
-                        </span>
-                    </div>
-                    <div class="promo-recommend flex-fill">
-                        <strong>2. Hệ thống tính ưu đãi</strong>
-                        <span class="text-muted small">
-                            Promotion_engine đọc promotion_tiers và promotions_by_status để chọn tối ưu.
-                        </span>
-                    </div>
-                    <div class="promo-recommend flex-fill">
-                        <strong>3. Đặt hàng</strong>
-                        <span class="text-muted small">
-                            Thông tin thanh toán được lưu vào orders và promotion_logs để theo dõi.
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
     </section>
 @endsection

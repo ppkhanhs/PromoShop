@@ -13,6 +13,35 @@
         </a>
     </div>
 
+    @php
+        if (!function_exists('formatCassandraDate')) {
+            function formatCassandraDate($value) {
+                if (empty($value)) return 'Không giới hạn';
+                try {
+                    if (is_object($value)) {
+                        if (method_exists($value, 'toDateTime')) {
+                            return \Carbon\Carbon::instance($value->toDateTime())->format('d/m/Y');
+                        }
+                        return (string)$value;
+                    }
+                    if (is_numeric($value)) {
+                        $val = (int)$value;
+                        if ($val < 1000000) {
+                            return \Carbon\Carbon::createFromTimestamp($val * 86400)->format('d/m/Y');
+                        }
+                        return \Carbon\Carbon::createFromTimestamp($val)->format('d/m/Y');
+                    }
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value)) {
+                        return \Carbon\Carbon::parse($value)->format('d/m/Y');
+                    }
+                    return $value;
+                } catch (\Exception $e) {
+                    return 'Không xác định';
+                }
+            }
+        }
+    @endphp
+
     @if (empty($promotions))
         <div class="card shadow-sm">
             <div class="card-body text-center text-muted py-5">
@@ -23,13 +52,16 @@
         <div class="row g-3">
             @foreach ($promotions as $promotion)
                 @php
-                    /** @var \App\Models\Cassandra\Promotion $promotion */
                     $tiers = $promotion->tiers();
                     $minOrder = (int) $promotion->get('min_order', 0);
                     $autoApply = $promotion->get('auto_apply');
                     $stackable = $promotion->get('stackable');
                     $status = $promotion->get('status', 'inactive');
+
+                    $start = formatCassandraDate($promotion->get('start_date'));
+                    $end = formatCassandraDate($promotion->get('end_date'));
                 @endphp
+
                 <div class="col-12">
                     <div class="card shadow-sm">
                         <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-start gap-3">
@@ -52,15 +84,17 @@
                                 </span>
                             </div>
                         </div>
+
                         <div class="card-body">
                             <div class="row g-3 mb-3">
                                 <div class="col-md-4">
                                     <div class="border rounded p-3 h-100">
                                         <h3 class="h6 text-muted text-uppercase mb-2">Giới hạn thời gian</h3>
-                                        <p class="mb-1">Bắt đầu: <strong>{{ $promotion->get('start_date') ?? 'Không giới hạn' }}</strong></p>
-                                        <p class="mb-0">Kết thúc: <strong>{{ $promotion->get('end_date') ?? 'Không giới hạn' }}</strong></p>
+                                        <p class="mb-1">Bắt đầu: <strong>{{ $start }}</strong></p>
+                                        <p class="mb-0">Kết thúc: <strong>{{ $end }}</strong></p>
                                     </div>
                                 </div>
+
                                 <div class="col-md-4">
                                     <div class="border rounded p-3 h-100">
                                         <h3 class="h6 text-muted text-uppercase mb-2">Điều kiện chung</h3>
@@ -76,6 +110,7 @@
                                         @endif
                                     </div>
                                 </div>
+
                                 <div class="col-md-4">
                                     <div class="border rounded p-3 h-100">
                                         <h3 class="h6 text-muted text-uppercase mb-2">Mô tả</h3>
@@ -102,7 +137,6 @@
                                         <tbody>
                                             @foreach ($tiers as $tier)
                                                 @php
-                                                    /** @var \App\Models\Cassandra\PromotionTier $tier */
                                                     $tierMin = (int) $tier->get('min_value', 0);
                                                     $percent = $tier->get('discount_percent');
                                                     $amount = $tier->get('discount_amount');

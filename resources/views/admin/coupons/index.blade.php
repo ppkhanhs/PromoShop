@@ -63,9 +63,47 @@
                                 <div>Cho phép cộng dồn: <strong>{{ $promotion->get('stackable') ? 'Có' : 'Không' }}</strong></div>
                             </td>
                             <td>
-                                <div>Bắt đầu: <strong>{{ $promotion->get('start_date') ?? 'Không giới hạn' }}</strong></div>
-                                <div>Kết thúc: <strong>{{ $promotion->get('end_date') ?? 'Không giới hạn' }}</strong></div>
+                                @php
+                                    $startRaw = $promotion->get('start_date');
+                                    $endRaw = $promotion->get('end_date');
+
+                                    function formatCassandraDate($value) {
+                                        if (empty($value)) return 'Không giới hạn';
+
+                                        try {
+                                            if (is_object($value)) {
+                                                if (method_exists($value, 'toDateTime')) {
+                                                    return \Carbon\Carbon::instance($value->toDateTime())->format('d/m/Y');
+                                                }
+                                                return (string)$value;
+                                            }
+
+                                            if (is_numeric($value)) {
+                                                $val = (int)$value;
+                                                if ($val < 1000000) {
+                                                    return \Carbon\Carbon::createFromTimestamp($val * 86400)->format('d/m/Y');
+                                                }
+                                                return \Carbon\Carbon::createFromTimestamp($val)->format('d/m/Y');
+                                            }
+
+                                            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value)) {
+                                                return \Carbon\Carbon::parse($value)->format('d/m/Y');
+                                            }
+
+                                            return $value;
+                                        } catch (\Exception $e) {
+                                            return 'Không xác định';
+                                        }
+                                    }
+
+                                    $start = formatCassandraDate($startRaw);
+                                    $end = formatCassandraDate($endRaw);
+                                @endphp
+
+                                <div>Bắt đầu: <strong>{{ $start }}</strong></div>
+                                <div>Kết thúc: <strong>{{ $end }}</strong></div>
                             </td>
+
                             <td class="text-center">
                                 <span class="badge text-bg-{{ $status === 'active' ? 'success' : ($status === 'draft' ? 'secondary' : 'warning') }}">
                                     {{ strtoupper($status) }}

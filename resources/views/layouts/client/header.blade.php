@@ -15,11 +15,9 @@
         </a>
 
         <nav class="site-nav">
-            <a class="{{ request()->routeIs('client.home') ? 'is-active' : '' }}" href="{{ route('client.home') }}">Trang chủ</a>
             @auth
                 <a class="{{ request()->routeIs('client.orders') ? 'is-active' : '' }}" href="{{ route('client.orders') }}">Đơn hàng</a>
             @endauth
-            <a class="{{ request()->routeIs('admin.*') ? 'is-active' : '' }}" href="{{ route('admin.dashboard') }}">Quản trị</a>
         </nav>
 
         <div class="site-actions">
@@ -48,7 +46,12 @@
                         <span class="dropdown-item-text text-muted small">{{ $user?->getAttribute('email') }}</span>
                         <a class="dropdown-item" href="{{ route('client.orders') }}">Đơn hàng của tôi</a>
                         <a class="dropdown-item" href="{{ route('client.cart') }}">Giỏ hàng</a>
-                        <div class="dropdown-divider"></div>
+                        @if ($user?->getAttribute('role') === 'admin')
+                            <a class="dropdown-item {{ request()->routeIs('admin.*') ? 'is-active' : '' }}" href="{{ route('admin.dashboard') }}">
+                                Trang quản trị
+                            </a>
+                        @endif
+                     <div class="dropdown-divider"></div>
                         <form action="{{ route('logout') }}" method="POST">
                             @csrf
                             <button type="submit" class="dropdown-item text-danger fw-semibold">Đăng xuất</button>
