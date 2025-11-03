@@ -15,6 +15,11 @@ from pydantic import BaseModel, EmailStr
 cluster = Cluster(["127.0.0.1"], port=9042)
 session = cluster.connect("promo_shop")
 session.row_factory = dict_factory
+try:
+    cluster.register_user_type("promo_shop", "order_item", dict)
+except Exception:
+    # If the UDT is not available (demo environment), ignore this registration
+    pass
 
 _metadata = cluster.metadata
 _promotion_table = None
@@ -72,17 +77,77 @@ def to_decimal(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
-def serialize_items(items: List[Dict[str, Any]]) -> str:
-    return json.dumps(items, ensure_ascii=False)
-
-
-def deserialize_items(payload: Optional[str]) -> List[Dict[str, Any]]:
-    if not payload:
-        return []
+def _normalize_item_payload(item: Dict[str, Any]) -> Dict[str, Any]:
+    product_id = str(item.get("product_id") or item.get("id") or "")
+    name = item.get("name") or product_id
     try:
-        return json.loads(payload)
-    except json.JSONDecodeError:
+        quantity = int(item.get("quantity") or item.get("qty") or 0)
+    except (TypeError, ValueError):
+        quantity = 0
+    raw_price = item.get("price", item.get("unit_price", 0))
+    price_decimal = to_decimal(raw_price)
+    return {
+        "product_id": product_id,
+        "name": name,
+        "price_decimal": price_decimal,
+        "quantity": quantity,
+    }
+
+
+def serialize_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized = [_normalize_item_payload(item) for item in items]
+    return [
+        {
+            "product_id": entry["product_id"],
+            "name": entry["name"],
+            "price": entry["price_decimal"],
+            "quantity": entry["quantity"],
+        }
+        for entry in normalized
+    ]
+
+
+def deserialize_items(payload: Optional[Any]) -> List[Dict[str, Any]]:
+    if payload in (None, "", []):
         return []
+
+    if isinstance(payload, str):
+        try:
+            raw_items = json.loads(payload)
+        except json.JSONDecodeError:
+            return []
+    elif isinstance(payload, list):
+        raw_items = payload
+    else:
+        return []
+
+    items: List[Dict[str, Any]] = []
+    for entry in raw_items:
+        if isinstance(entry, dict):
+            product_id = entry.get("product_id")
+            name = entry.get("name") or product_id
+            quantity = entry.get("quantity", 0)
+            try:
+                quantity = int(quantity)
+            except (TypeError, ValueError):
+                quantity = 0
+            price_value = entry.get("price") or entry.get("price_decimal") or 0
+            if isinstance(price_value, Decimal):
+                price = float(price_value)
+            else:
+                try:
+                    price = float(price_value)
+                except (TypeError, ValueError):
+                    price = 0.0
+            items.append(
+                {
+                    "product_id": product_id,
+                    "name": name,
+                    "price": price,
+                    "quantity": quantity,
+                }
+            )
+    return items
 
 
 def normalize_date_value(value: Optional[Any]) -> Optional[date]:

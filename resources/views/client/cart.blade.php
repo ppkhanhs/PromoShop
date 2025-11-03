@@ -6,11 +6,40 @@
     @php
         $cartCollection = collect($cartItems ?? []);
         $totalQuantity = $cartCollection->sum('quantity');
-        $promotionList = collect($promotions ?? [])->take(3);
         $appliedPromotions = collect($summary['applied_promotions'] ?? []);
-        $manualPendingPromotions = collect($pendingPromotions ?? []);
-        $disabledPromotions = collect($disabledPromotions ?? []);
         $gifts = collect($summary['gifts'] ?? []);
+        $promotionList = collect($promotions ?? [])->take(3);
+        $subtotalValue = (int) ($summary['subtotal'] ?? 0);
+        $identifierKeys = ['promo_id', 'promo_code', 'code', 'promotion_code', 'id'];
+        $normalizeIdentifiers = function ($promotion) use ($identifierKeys) {
+            $payload = $promotion instanceof \App\Models\Cassandra\Promotion ? $promotion->toArray() : (array) $promotion;
+            $normalized = [];
+            $raw = [];
+            foreach ($identifierKeys as $key) {
+                $value = $payload[$key] ?? null;
+                if ($value === null || $value === '') {
+                    continue;
+                }
+                $stringValue = (string) $value;
+                $raw[] = $stringValue;
+                $normalized[] = strtoupper($stringValue);
+            }
+
+            return [$normalized, $raw];
+        };
+        $selectedLookup = collect(session('cart.promotions.selected', []))
+            ->mapWithKeys(fn ($value) => [strtoupper((string) $value) => true])
+            ->all();
+        $disabledLookup = collect(session('cart.promotions.disabled', []))
+            ->mapWithKeys(fn ($value) => [strtoupper((string) $value) => true])
+            ->all();
+        $appliedLookup = [];
+        foreach ($appliedPromotions as $appliedPromotion) {
+            [$ids] = $normalizeIdentifiers($appliedPromotion['promotion'] ?? []);
+            foreach ($ids as $identifier) {
+                $appliedLookup[$identifier] = $appliedPromotion;
+            }
+        }
     @endphp
 
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
@@ -108,123 +137,217 @@
         <div class="col-lg-4">
             <div class="cart-sidebar-stack">
 
-                <div class="card cart-card cart-summary-card-secondary">
+                    <div class="card cart-card cart-summary-card-secondary">
                     <div class="card-body">
-                        <h2 class="h6 mb-3">Áp dụng khuyến mãi</h2>
-                        <form action="{{ route('client.cart.promo.apply') }}" method="POST" class="promo-code-form">
-                            @csrf
-                            <label for="promotion_code" class="visually-hidden">Mã khuyến mãi</label>
-                            <div class="input-group promo-code-group">
-                                <input type="text" id="promotion_code" name="promotion_code" class="form-control"
-                                    placeholder="Nhập mã khuyến mãi" value="{{ old('promotion_code') }}" autocomplete="off">
-                                <button type="submit" class="btn btn-secondary">
-                                    Áp dụng
-                                </button>
+                        <div class="d-flex justify-content-between flex-wrap gap-3 mb-3">
+                            <div>
+                                <h2 class="h6 mb-1">Ưu đãi cho đơn hàng</h2>
+                                <p class="text-muted small mb-0">Chọn hoặc bỏ chọn mã khuyến mãi phù hợp với đơn hàng hiện tại.</p>
                             </div>
-                        </form>
+                            <form action="{{ route('client.cart.promo.apply') }}" method="POST" class="promo-code-form ms-auto">
+                                @csrf
+                                <label for="promotion_code" class="visually-hidden">Mã khuyến mãi</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="promotion_code" name="promotion_code" class="form-control"
+                                        placeholder="Nhap ma" value="{{ old('promotion_code') }}" autocomplete="off">
+                                    <button type="submit" class="btn btn-outline-primary">
+                                        Áp dụng
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
 
                         @if ($errors->has('promotion_code'))
-                            <p class="text-danger small mt-2 mb-0">
+                            <p class="text-danger small mt-1 mb-3">
                                 {{ $errors->first('promotion_code') }}
                             </p>
                         @endif
 
-                        <div class="mt-3">
-                            <strong class="small text-uppercase text-muted">Gợi ý mã nhanh</strong>
-                            <div class="promo-chip-group mt-2">
-                                @forelse ($promotionList as $promotion)
-                                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        onclick="document.getElementById('promotion_code').value='{{ $promotion->promo_code ?? $promotion->promo_id }}'">
-                                        {{ $promotion->title ?? $promotion->get('title') ?? $promotion->promo_id }}
-                                    </button>
-                                @empty
-                                    <span class="text-muted small">Chưa có chương trình nổi bật.</span>
-                                @endforelse
-                            </div>
+                        <div class="promo-option-list">
+                            @forelse ($promotions as $promotion)
+                                @php
+                                    $promotionModel = $promotion instanceof \App\Models\Cassandra\Promotion ? $promotion : \App\Models\Cassandra\Promotion::from((array) $promotion);
+                                    [$normalizedIds, $rawIds] = $normalizeIdentifiers($promotionModel);
+                                    $primaryIdentifier = $rawIds[0] ?? ($promotionModel->get('promo_id') ?? ($promotionModel->get('promo_code') ?? ''));
+
+                                    $isApplied = false;
+                                    $appliedData = null;
+                                    foreach ($normalizedIds as $identifier) {
+                                        if (isset($appliedLookup[$identifier])) {
+                                            $isApplied = true;
+                                            $appliedData = $appliedLookup[$identifier];
+                                            break;
+                                        }
+                                    }
+
+                                    $isSelected = $isApplied;
+                                    if (! $isSelected) {
+                                        foreach ($normalizedIds as $identifier) {
+                                            if (isset($selectedLookup[$identifier])) {
+                                                $isSelected = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    $isManuallyDisabled = false;
+                                    foreach ($normalizedIds as $identifier) {
+                                        if (isset($disabledLookup[$identifier])) {
+                                            $isManuallyDisabled = true;
+                                            break;
+                                        }
+                                    }
+
+                                    $tiers = $promotionModel->tiers();
+                                    usort($tiers, function ($a, $b) {
+                                        $minA = (int) $a->get('min_value', $a->get('min_order', 0));
+                                        $minB = (int) $b->get('min_value', $b->get('min_order', 0));
+                                        return $minA <=> $minB;
+                                    });
+
+                                    $lowestTier = $tiers[0] ?? null;
+                                    $eligibleTier = null;
+                                    $nextTier = null;
+                                    foreach ($tiers as $tier) {
+                                        $minAmount = (int) $tier->get('min_value', $tier->get('min_order', 0));
+                                        $minQty = (int) $tier->get('min_quantity', $tier->get('min_qty', 0));
+                                        $meetsAmount = $subtotalValue >= $minAmount;
+                                        $meetsQty = $minQty <= 0 || $totalQuantity >= $minQty;
+                                        if ($meetsAmount && $meetsQty) {
+                                            $eligibleTier = $tier;
+                                        } elseif (! $nextTier) {
+                                            $nextTier = $tier;
+                                        }
+                                    }
+
+                                    $referenceTier = $eligibleTier ?: ($nextTier ?: $lowestTier);
+                                    $minAmountTarget = $referenceTier ? (int) $referenceTier->get('min_value', $referenceTier->get('min_order', 0)) : 0;
+                                    $minQtyTarget = $referenceTier ? (int) $referenceTier->get('min_quantity', $referenceTier->get('min_qty', 0)) : 0;
+                                    $needAmount = max(0, $minAmountTarget - $subtotalValue);
+                                    $needQty = max(0, $minQtyTarget - $totalQuantity);
+                                    $isEligible = $eligibleTier !== null;
+                                    $isDisabled = $isManuallyDisabled || (! $isEligible && ! $isSelected);
+
+                                    $benefitTier = $eligibleTier ?: $lowestTier;
+                                    $benefitParts = [];
+                                    if ($benefitTier) {
+                                        $percent = (int) $benefitTier->get('discount_percent', $benefitTier->get('discount_percentual', 0));
+                                        $amount = (int) $benefitTier->get('discount_amount', $benefitTier->get('discount', 0));
+                                        if ($percent > 0) {
+                                            $benefitParts[] = 'Giảm ' . $percent . '%';
+                                        }
+                                        if ($amount > 0) {
+                                            $benefitParts[] = 'Giảm ' . number_format($amount, 0, ',', '.') . ' VND';
+                                        }
+                                        if ($benefitTier->get('freeship') || $benefitTier->get('free_shipping')) {
+                                            $benefitParts[] = 'Freeship';
+                                        }
+                                        $reward = $benefitTier->get('combo_description') ?? $benefitTier->get('reward');
+                                        if ($reward && empty($benefitParts)) {
+                                            $benefitParts[] = (string) $reward;
+                                        }
+                                    }
+                                    if (empty($benefitParts)) {
+                                        $benefitParts[] = 'Ưu đãi đặc biệt';
+                                    }
+
+                                    $conditionParts = [];
+                                    if ($minAmountTarget > 0) {
+                                        $conditionParts[] = 'Đơn từ' . number_format($minAmountTarget, 0, ',', '.') . ' VND';
+                                    }
+                                    if ($minQtyTarget > 0) {
+                                        $conditionParts[] = 'Số lượng từ ' . $minQtyTarget;
+                                    }
+
+                                    $needsMessages = [];
+                                    if ($needAmount > 0) {
+                                        $needsMessages[] = 'Cần mua thêm ' . number_format($needAmount, 0, ',', '.') . ' VND';
+                                    }
+                                    if ($needQty > 0) {
+                                        $needsMessages[] = 'Cần thêm ' . $needQty . ' sản phẩm';
+                                    }
+                                    $needsMessage = implode(' và ', $needsMessages);
+
+                                    $promotionName = $promotionModel->get('title') ?? $promotionModel->get('promo_id');
+                                    $checkboxChecked = $isApplied || ($isSelected && ! $isManuallyDisabled);
+                                    $checkboxDisabled = $isManuallyDisabled || (! $isEligible && ! $isApplied);
+                                    $rowClasses = 'promo-option border rounded-3 p-3 mb-2 d-flex gap-3 align-items-start';
+                                    if ($isApplied) {
+                                        $rowClasses .= ' promo-option--applied';
+                                    } elseif ($isSelected) {
+                                        $rowClasses .= ' promo-option--selected';
+                                    }
+                                    if ($isDisabled) {
+                                        $rowClasses .= ' promo-option--disabled';
+                                    }
+                                    if ($isManuallyDisabled) {
+                                        $rowClasses .= ' promo-option--muted';
+                                    }
+                                @endphp
+
+                                <div class="{{ $rowClasses }}">
+                                    <div class="form-check mt-1">
+                                        <input class="form-check-input" type="checkbox"
+                                            @checked($checkboxChecked)
+                                            @disabled($checkboxDisabled)>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex flex-wrap justify-content-between gap-2">
+                                            <div>
+                                                <div class="fw-semibold">{{ $promotionName }}</div>
+                                                <div class="text-muted small">
+                                                    {{ implode(' · ', array_filter($benefitParts)) }}
+                                                    @if (!empty($conditionParts))
+                                                        · {{ implode(' · ', array_filter($conditionParts)) }}
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            <div class="text-end">
+                                                @if ($isApplied)
+                                                    <span class="badge bg-success-subtle text-success">Đã áp dụng</span>
+                                                @elseif ($isSelected && ! $isApplied)
+                                                    <span class="badge bg-warning-subtle text-warning">Đang chờ</span>
+                                                @elseif ($isManuallyDisabled)
+                                                    <span class="badge bg-secondary-subtle text-secondary">Đang tắt</span>
+                                                @endif
+                                            </div>
+                                        </div>
+
+                                        @if (!empty($needsMessage) && ! $isApplied)
+                                            <div class="text-danger small mt-2">
+                                                {{ $needsMessage }} để áp dụng.
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <div class="promo-option__action text-end">
+                                        @if ($isApplied || ($isSelected && ! $isManuallyDisabled))
+                                            <form action="{{ route('client.cart.promo.remove') }}" method="POST">
+                                                @csrf
+                                                @method('DELETE')
+                                                <input type="hidden" name="promotion_id" value="{{ $primaryIdentifier }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Bỏ chọn</button>
+                                            </form>
+                                        @elseif ($isManuallyDisabled)
+                                            <form action="{{ route('client.cart.promo.enable') }}" method="POST">
+                                                @csrf
+                                                <input type="hidden" name="promotion_id" value="{{ $primaryIdentifier }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-primary">Sử dụng</button>
+                                            </form>
+                                        @elseif ($isEligible)
+                                            <form action="{{ route('client.cart.promo.apply') }}" method="POST">
+                                                @csrf
+                                                <input type="hidden" name="promotion_code" value="{{ $primaryIdentifier }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-success">Chọn</button>
+                                            </form>
+                                        @else
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled>Chưa đủ</button>
+                                        @endif
+                                    </div>
+                                </div>
+                            @empty
+                                <p class="text-muted small mb-0">Chưa có chương trình khuyến mãi khả dụng.</p>
+                            @endforelse
                         </div>
-
-                        @if ($appliedPromotions->isNotEmpty())
-                            <div class="mt-4">
-                                <strong class="small text-uppercase text-muted">Đang áp dụng</strong>
-                                <ul class="list-unstyled mb-0 mt-2 space-y-3">
-                                    @foreach ($appliedPromotions as $applied)
-                                        <li class="text-center border rounded-3 py-3 px-3 shadow-sm">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-success mx-auto mb-2"><path d="M20 6 9 17l-5-5"/></svg>
-                                            <div class="fw-semibold text-success mb-2">Đã áp dụng</div>
-                                            <div class="my-2">
-                                                <div class="fw-semibold">{{ $applied['promotion']['title'] ?? $applied['promotion']['promo_id'] }}</div>
-                                                <div class="text-muted small">{{ $applied['tier']['label'] ?? ('Bậc ' . ($applied['tier']['tier_level'] ?? '')) }}</div>
-                                            </div>
-                                            <div class="mt-3">
-                                                <span class="promo-saving d-block text-success fw-medium mb-2">Giảm {{ number_format($applied['discount'] ?? 0, 0, ',', '.') }} VND</span>
-                                                <form action="{{ route('client.cart.promo.remove') }}" method="POST" class="d-inline-block">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <input type="hidden" name="promotion_id"
-                                                        value="{{ $applied['promotion']['promo_id'] ?? $applied['promotion']['promo_code'] ?? $applied['promotion']['id'] ?? ($applied['promotion']['code'] ?? '') }}">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Hủy</button>
-                                                </form>
-                                            </div>
-                                        </li>
-                                    @endforeach
-                                </ul>
-                            </div>
-                        @endif
-
-                        @if ($manualPendingPromotions->isNotEmpty())
-                            <div class="mt-4">
-                                <strong class="small text-uppercase text-muted">Đang chờ điều kiện</strong>
-                                <ul class="list-unstyled mb-0 mt-2">
-                                    @foreach ($manualPendingPromotions as $pending)
-                                        <li class="promo-line-item">
-                                            <div class="promo-line-item__content">
-                                                <div class="promo-line-item__title">{{ $pending['title'] ?? $pending['promo_id'] ?? ($pending['promo_code'] ?? 'Khuyến mãi') }}</div>
-                                                <div class="promo-line-item__subtitle">Cần thêm giá trị đơn hàng hoặc số lượng để kích hoạt ưu đãi này.</div>
-                                            </div>
-                                            <div class="promo-line-item__actions">
-                                                <form action="{{ route('client.cart.promo.remove') }}" method="POST">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <input type="hidden" name="promotion_id"
-                                                        value="{{ $pending['promo_id'] ?? $pending['promo_code'] ?? ($pending['id'] ?? ($pending['code'] ?? '')) }}">
-                                                    <button type="submit" class="link-danger small">Hủy</button>
-                                                </form>
-                                            </div>
-                                        </li>
-                                    @endforeach
-                                </ul>
-                            </div>
-                        @endif
-
-                        @if ($disabledPromotions->isNotEmpty())
-                            <div class="mt-4">
-                                <strong class="small text-uppercase text-muted">Đã tắt tự động</strong>
-                                <ul class="list-unstyled mb-0 mt-2">
-                                    @foreach ($disabledPromotions as $disabled)
-                                        <li class="promo-line-item">
-                                            <div class="promo-line-item__content">
-                                                <div class="promo-line-item__title">{{ $disabled['title'] ?? $disabled['promo_id'] ?? ($disabled['promo_code'] ?? 'Khuyến mãi') }}</div>
-                                                <div class="promo-line-item__subtitle">Khuyến mãi này sẽ không tự áp dụng cho tới khi bạn bật lại.</div>
-                                            </div>
-                                            <div class="promo-line-item__actions">
-                                                <form action="{{ route('client.cart.promo.enable') }}" method="POST">
-                                                    @csrf
-                                                    <input type="hidden" name="promotion_id"
-                                                        value="{{ $disabled['promo_id'] ?? $disabled['promo_code'] ?? ($disabled['id'] ?? ($disabled['code'] ?? '')) }}">
-                                                    <button type="submit" class="link-primary small">Bật lại</button>
-                                                </form>
-                                            </div>
-                                        </li>
-                                    @endforeach
-                                </ul>
-                            </div>
-                        @endif
-
-                        @if ($appliedPromotions->isEmpty() && $manualPendingPromotions->isEmpty() && $disabledPromotions->isEmpty())
-                            <p class="text-muted small mb-0 mt-3">
-                                Áp dụng khuyến mãi để tiết kiệm thêm và mở khóa quà tặng hấp dẫn.
-                            </p>
-                        @endif
                     </div>
                 </div>
 
@@ -260,6 +383,27 @@
                                 <span>Giảm giá</span>
                                 <strong>-{{ number_format($summary['discount'] ?? 0, 0, ',', '.') }} VND</strong>
                             </li>
+                            @if ($appliedPromotions->isNotEmpty())
+                                @foreach ($appliedPromotions as $applied)
+                                    @php
+                                        $promoLabel = $applied['promotion']['title'] ?? $applied['promotion']['promo_id'] ?? 'Khuyen mai';
+                                        $promoDiscountAmount = (int) ($applied['discount'] ?? 0);
+                                        $promoShippingDiscount = (int) ($applied['shipping_discount'] ?? 0);
+                                    @endphp
+                                    @if ($promoDiscountAmount > 0)
+                                        <li class="cart-summary-row small text-success">
+                                            <span>{{ $promoLabel }}</span>
+                                            <strong>-{{ number_format($promoDiscountAmount, 0, ',', '.') }} VND</strong>
+                                        </li>
+                                    @endif
+                                    @if ($promoShippingDiscount > 0)
+                                        <li class="cart-summary-row small text-success">
+                                            <span>{{ $promoLabel }} (giam phi giao hang)</span>
+                                            <strong>-{{ number_format($promoShippingDiscount, 0, ',', '.') }} VND</strong>
+                                        </li>
+                                    @endif
+                                @endforeach
+                            @endif
                             <li class="cart-summary-row">
                                 <span>Phí giao hàng</span>
                                 <strong>{{ number_format($summary['shipping_fee'] ?? 0, 0, ',', '.') }} VND</strong>
@@ -359,3 +503,42 @@
     </script>
 
 @endsection
+
+@push('styles')
+    <style>
+        .promo-option-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .promo-option {
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+        }
+
+        .promo-option--applied {
+            border-color: rgba(25, 135, 84, 0.35);
+            background-color: rgba(25, 135, 84, 0.06);
+        }
+
+        .promo-option--selected:not(.promo-option--applied) {
+            border-color: rgba(255, 193, 7, 0.35);
+            background-color: rgba(255, 193, 7, 0.04);
+        }
+
+        .promo-option--disabled {
+            opacity: 0.7;
+        }
+
+        .promo-option--muted {
+            opacity: 0.55;
+        }
+
+        .promo-option__action form {
+            margin: 0;
+        }
+
+        .promo-option__action .btn {
+            white-space: nowrap;
+        }
+    </style>
+@endpush

@@ -68,7 +68,7 @@
             </div>
         </div>
         <div class="text-center">
-            <img src="https://images.promoshop.vn/banners/promo-dashboard.png"
+            <img src="https://png.pngtree.com/png-clipart/20210613/original/pngtree-blue-fashion-promotion-promotion-banner-template-png-image_6409567.jpg"
                  alt="Promo dashboard"
                  class="img-fluid rounded-4 shadow-sm">
         </div>
