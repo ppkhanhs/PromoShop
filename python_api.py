@@ -16,6 +16,11 @@ from pydantic import BaseModel, EmailStr
 cluster = Cluster(["127.0.0.1"], port=9042)
 session = cluster.connect("promo_shop")
 session.row_factory = dict_factory
+try:
+    cluster.register_user_type("promo_shop", "order_item", dict)
+except Exception:
+    # If the UDT is not available (demo environment), ignore this registration
+    pass
 
 _metadata = cluster.metadata
 _promotion_table = None
@@ -109,112 +114,36 @@ def to_decimal(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
-def _normalize_order_item_payload(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    product_id = (item.get("product_id") or item.get("sku") or "").strip()
-    if not product_id:
-        return None
-    name = (item.get("name") or product_id) or product_id
+def serialize_items(items: List[Dict[str, Any]]) -> str:
+    return json.dumps(items, ensure_ascii=False)
 
-    raw_price = item.get("price", item.get("unit_price", 0))
+
+def deserialize_items(payload: Optional[str]) -> List[Dict[str, Any]]:
+    if not payload:
+        return []
     try:
-        price_decimal = Decimal(str(raw_price))
-    except Exception:
-        price_decimal = Decimal("0")
-
-    try:
-        quantity = int(item.get("quantity", item.get("qty", 1)))
-    except Exception:
-        quantity = 1
-    quantity = max(quantity, 1)
-
-    if price_decimal == price_decimal.to_integral():
-        price_json: Any = int(price_decimal)
-    else:
-        price_json = float(price_decimal)
-
-    return {
-        "product_id": product_id,
-        "name": str(name),
-        "price_decimal": price_decimal,
-        "price": price_json,
-        "quantity": quantity,
-    }
-
-
-def _format_order_items_for_column(
-    items: List[Dict[str, Any]],
-    column_type: Optional[str],
-) -> Any:
-    normalized = []
-    for item in items:
-        payload = _normalize_order_item_payload(item)
-        if payload:
-            normalized.append(payload)
-
-    if not normalized:
+        return json.loads(payload)
+    except json.JSONDecodeError:
         return []
 
-    if column_type and ORDER_ITEM_CLASS and "order_item" in column_type:
-        return [
-            ORDER_ITEM_CLASS(
-                product_id=entry["product_id"],
-                name=entry["name"],
-                price=entry["price_decimal"],
-                quantity=entry["quantity"],
-            )
-            for entry in normalized
-        ]
-
-    simplified = [
-        {
-            "product_id": entry["product_id"],
-            "name": entry["name"],
-            "price": entry["price"],
-            "quantity": entry["quantity"],
-        }
-        for entry in normalized
-    ]
-
-    if column_type and column_type.startswith("list<"):
-        return simplified
-
-    return json.dumps(simplified, ensure_ascii=False)
-
-
-def serialize_items(items: List[Dict[str, Any]], column_type: Optional[str]) -> Any:
-    return _format_order_items_for_column(items, column_type)
-
-
-def deserialize_items(payload: Any) -> List[Dict[str, Any]]:
-    if payload in (None, "", []):
-        return []
-
-    if isinstance(payload, list):
-        items: List[Dict[str, Any]] = []
-        for entry in payload:
-            if hasattr(entry, "_asdict"):
-                data = entry._asdict()
-            elif isinstance(entry, dict):
-                data = entry
-            else:
-                continue
-
-            product_id = data.get("product_id")
-            if not product_id:
-                continue
-
-            name = data.get("name") or product_id
-            price = data.get("price", data.get("unit_price", 0))
-            if isinstance(price, Decimal):
-                price = float(price) if price != price.to_integral() else int(price)
-
-            quantity = data.get("quantity", data.get("qty", 1))
+    items: List[Dict[str, Any]] = []
+    for entry in raw_items:
+        if isinstance(entry, dict):
+            product_id = entry.get("product_id")
+            name = entry.get("name") or product_id
+            quantity = entry.get("quantity", 0)
             try:
                 quantity = int(quantity)
-            except Exception:
-                quantity = 1
-            quantity = max(quantity, 1)
-
+            except (TypeError, ValueError):
+                quantity = 0
+            price_value = entry.get("price") or entry.get("price_decimal") or 0
+            if isinstance(price_value, Decimal):
+                price = float(price_value)
+            else:
+                try:
+                    price = float(price_value)
+                except (TypeError, ValueError):
+                    price = 0.0
             items.append(
                 {
                     "product_id": product_id,
@@ -223,51 +152,7 @@ def deserialize_items(payload: Any) -> List[Dict[str, Any]]:
                     "quantity": quantity,
                 }
             )
-        return items
-
-    if isinstance(payload, str):
-        try:
-            decoded = json.loads(payload)
-        except json.JSONDecodeError:
-            return []
-        return decoded if isinstance(decoded, list) else []
-
-    return []
-
-
-def _apply_order_updates(
-    order_id: str, updates: Dict[str, Any], record: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    if record is None:
-        row = session.execute(
-            "SELECT * FROM orders_by_id WHERE order_id = %s", (order_id,)
-        ).one()
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy đơn hàng",
-            )
-        record = dict(row) if isinstance(row, dict) else dict(row._asdict())
-    else:
-        record = dict(record) if isinstance(record, dict) else dict(record)
-
-    if not updates:
-        return record
-
-    set_clause = ", ".join(f"{column} = %s" for column in updates.keys())
-    values = list(updates.values())
-
-    session.execute(
-        f"UPDATE orders_by_id SET {set_clause} WHERE order_id = %s",
-        (*values, order_id),
-    )
-    session.execute(
-        f"UPDATE orders SET {set_clause} WHERE user_id = %s AND created_at = %s AND order_id = %s",
-        (*values, record["user_id"], record["created_at"], order_id),
-    )
-
-    record.update(updates)
-    return record
+    return items
 
 
 def normalize_date_value(value: Optional[Any]) -> Optional[date]:
