@@ -237,7 +237,7 @@
                                             @csrf
                                             @method('DELETE')
                                             <input type="hidden" name="promotion_id" value="{{ $promoData['promo_id'] ?? $promoData['promo_code'] ?? $promoData['code'] ?? '' }}">
-                                            <button type="submit" class="btn btn-sm text-danger"><i class="fas fa-trash-alt"></i></button>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Bỏ</button>
                                         </form>
                                     </div>
                                 @endforeach
@@ -249,46 +249,74 @@
 
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6 class="fw-semibold mb-3"><i class="fa-solid fa-money-bill-wave text-success me-2"></i>Tổng quan thanh toán</h6>
+                    <h6 class="fw-semibold mb-3"><i class="fa-solid fa-money-bill-wave text-success me-2"></i>T&#7893;ng quan thanh to&#225;n</h6>
+                    @php
+                        $promoDiscountTotal = 0;
+                        $promoShippingDiscountTotal = 0;
+                        foreach ($appliedSummaryMap as $summaryItem) {
+                            $promoDiscountTotal += (int) ($summaryItem['discount'] ?? 0);
+                            $promoShippingDiscountTotal += (int) ($summaryItem['shipping_discount'] ?? 0);
+                        }
+
+                        $summaryDiscountValue = (int) ($summary['discount'] ?? 0);
+                        $summaryShippingDiscountValue = (int) ($summary['shipping_discount'] ?? 0);
+
+                        $residualDiscountValue = max(0, $summaryDiscountValue - $promoDiscountTotal);
+                        if ($residualDiscountValue === 0 && empty($appliedSummaryMap)) {
+                            $residualDiscountValue = $summaryDiscountValue;
+                        }
+                        $shouldDisplayResidualDiscount = $residualDiscountValue > 0;
+
+                        $residualShippingDiscountValue = max(0, $summaryShippingDiscountValue - $promoShippingDiscountTotal);
+                        if ($residualShippingDiscountValue === 0 && empty($appliedSummaryMap)) {
+                            $residualShippingDiscountValue = $summaryShippingDiscountValue;
+                        }
+                        $shouldDisplayResidualShipping = $residualShippingDiscountValue > 0;
+
+                        $baseShippingFee = (int) ($summary['shipping_fee'] ?? 0);
+                        $finalShippingFee = (int) ($summary['final_shipping_fee'] ?? $baseShippingFee);
+                    @endphp
                     <ul class="list-unstyled small mb-3 promo-summary">
                         <li class="d-flex justify-content-between mb-1">
-                            <span>Tạm tính</span>
-                            <span>{{ number_format($summary['subtotal'], 0, ',', '.') }}đ</span>
+                            <span>T&#7841;m t&#237;nh</span>
+                            <span>{{ number_format($summary['subtotal'], 0, ',', '.') }}&#273;</span>
                         </li>
                         @if (!empty($appliedSummaryMap))
                             @foreach ($appliedSummaryMap as $identifier => $applied)
                                 @php
                                     $promoData = $applied['promotion'] ?? [];
-                                    $promoTitle = $promoData['title'] ?? ($promoData['promo_id'] ?? $promoData['promo_code'] ?? 'Khuyến mãi');
+                                    $promoTitle = $promoData['title'] ?? ($promoData['promo_id'] ?? $promoData['promo_code'] ?? 'Khuy&#7871;n m&#227;i');
                                     $discountValue = (int) ($applied['discount'] ?? 0);
                                     $shippingValue = (int) ($applied['shipping_discount'] ?? 0);
                                 @endphp
                                 @if ($discountValue > 0)
                                     <li class="d-flex justify-content-between text-success mb-1">
                                         <span><i class="fa-solid fa-tag me-1"></i>{{ $promoTitle }}</span>
-                                        <span>-{{ number_format($discountValue, 0, ',', '.') }}đ</span>
+                                        <span>-{{ number_format($discountValue, 0, ',', '.') }}&#273;</span>
                                     </li>
                                 @endif
                                 @if ($shippingValue > 0)
                                     <li class="d-flex justify-content-between text-success mb-1">
                                         <span class="ps-4">Freeship</span>
-                                        <span>-{{ number_format($shippingValue, 0, ',', '.') }}đ</span>
+                                        <span>-{{ number_format($shippingValue, 0, ',', '.') }}&#273;</span>
                                     </li>
                                 @endif
                             @endforeach
                         @endif
-                        <li class="d-flex justify-content-between text-success mb-1">
-                            <span>Giảm giá</span>
-                            <span>-{{ number_format($summary['discount'] ?? 0, 0, ',', '.') }}đ</span>
-                        </li>
-                        <li class="d-flex justify-content-between mb-1">
-                            <span>Phí giao hàng</span>
-                            <span>{{ number_format($summary['shipping_fee'] ?? 0, 0, ',', '.') }}đ</span>
-                        </li>
-                        @if (!empty($summary['shipping_discount']))
+                        @if ($shouldDisplayResidualDiscount)
                             <li class="d-flex justify-content-between text-success mb-1">
-                                <span>Giảm phí giao hàng</span>
-                                <span>-{{ number_format($summary['shipping_discount'], 0, ',', '.') }}đ</span>
+                                <span>Gi&#7843;m gi&#225;</span>
+                                <span>-{{ number_format($residualDiscountValue, 0, ',', '.') }}&#273;</span>
+                            </li>
+                        @endif
+                        <li class="d-flex justify-content-between mb-1">
+                            <span>Ph&#237; giao h&#224;ng</span>
+                            <span>{{ number_format($baseShippingFee, 0, ',', '.') }}&#273;</span>
+                        </li>
+                        @if ($shouldDisplayResidualShipping)
+                            <li class="d-flex justify-content-between text-success mb-1">
+                                <span>Gi&#7843;m ph&#237; giao h&#224;ng</span>
+                                <span>-{{ number_format($residualShippingDiscountValue, 0, ',', '.') }}&#273;</span>
                             </li>
                         @endif
                     </ul>
