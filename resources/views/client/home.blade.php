@@ -64,7 +64,7 @@
             </div>
         </div>
         <div class="text-center">
-            <img src="https://images.promoshop.vn/banners/promo-dashboard.png"
+            <img src="https://img.freepik.com/free-vector/sales-banner-origami-style_23-2148418712.jpg?w=740&t=st=1695794533~exp=1695795133~hmac=085858c2250575c736c7d3826cafab3bfd1d9ebec97d9444eae01cb9e9d0f8ae"
                  alt="Promo dashboard"
                  class="img-fluid rounded-4 shadow-sm">
         </div>

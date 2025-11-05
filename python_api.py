@@ -114,17 +114,141 @@ def to_decimal(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
-def serialize_items(items: List[Dict[str, Any]]) -> str:
-    return json.dumps(items, ensure_ascii=False)
+def serialize_items(
+    items: List[Dict[str, Any]],
+    column_type: Optional[str] = None,
+) -> Any:
+    """
+    Prepare cart items for persistence. If the Cassandra column expects a list of
+    `order_item` UDTs we cast each element accordingly, otherwise we fall back to
+    a JSON payload so legacy text columns remain compatible.
+    """
+    column = (column_type or "").lower()
+    normalized: List[Dict[str, Any]] = []
+
+    for item in items or []:
+        product_id = str(
+            item.get("product_id")
+            or item.get("id")
+            or item.get("sku")
+            or item.get("code")
+            or ""
+        ).strip()
+        name = str(item.get("name") or item.get("title") or product_id)
+        quantity_raw = item.get("quantity", item.get("qty", 0))
+        try:
+            quantity = int(quantity_raw)
+        except (TypeError, ValueError):
+            quantity = 0
+
+        price_value = item.get("price", item.get("base_price"))
+        price_decimal = to_decimal(price_value)
+
+        normalized.append(
+            {
+                "product_id": product_id,
+                "name": name,
+                "price": price_decimal,
+                "quantity": quantity,
+            }
+        )
+
+    if column.startswith("list<") and "order_item" in column:
+        if ORDER_ITEM_CLASS:
+            return [ORDER_ITEM_CLASS(**row) for row in normalized]
+        return normalized
+
+    if column.startswith("list<"):
+        return normalized
+
+    exportable: List[Dict[str, Any]] = []
+    for row in normalized:
+        price_value = row["price"]
+        if isinstance(price_value, Decimal):
+            price = float(price_value)
+        else:
+            try:
+                price = float(price_value)
+            except (TypeError, ValueError):
+                price = 0.0
+
+        exportable.append(
+            {
+                "product_id": row["product_id"],
+                "name": row["name"],
+                "price": price,
+                "quantity": row["quantity"],
+            }
+        )
+
+    return json.dumps(exportable, ensure_ascii=False)
 
 
-def deserialize_items(payload: Optional[str]) -> List[Dict[str, Any]]:
-    if not payload:
+def deserialize_items(payload: Optional[Any]) -> List[Dict[str, Any]]:
+    if payload in (None, "", [], {}):
         return []
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError:
-        return []
+
+    raw_items: List[Any] = []
+    if isinstance(payload, str):
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            return []
+        raw_items = decoded if isinstance(decoded, list) else []
+    elif isinstance(payload, list):
+        raw_items = payload
+    else:
+        # Attempt to coerce single UDT / tuple payloads into a list of dicts.
+        try:
+            if hasattr(payload, "_asdict"):
+                raw_items = [payload._asdict()]
+            else:
+                raw_items = list(payload)
+        except TypeError:
+            return []
+
+    items: List[Dict[str, Any]] = []
+    for item in raw_items:
+        if item is None:
+            continue
+        if hasattr(item, "_asdict"):
+            item = item._asdict()
+        elif not isinstance(item, dict):
+            try:
+                item = dict(item)
+            except Exception:
+                continue
+
+        price_value = item.get("price")
+        if isinstance(price_value, Decimal):
+            price = float(price_value)
+        else:
+            try:
+                price = float(price_value)
+            except (TypeError, ValueError):
+                price = 0.0
+
+        quantity_value = item.get("quantity", item.get("qty", 0))
+        try:
+            quantity = int(quantity_value)
+        except (TypeError, ValueError):
+            quantity = 0
+
+        items.append(
+            {
+                "product_id": str(
+                    item.get("product_id")
+                    or item.get("id")
+                    or item.get("sku")
+                    or ""
+                ).strip(),
+                "name": item.get("name") or item.get("title") or "",
+                "price": price,
+                "quantity": quantity,
+            }
+        )
+
+    return items
 
     items: List[Dict[str, Any]] = []
     for entry in raw_items:
