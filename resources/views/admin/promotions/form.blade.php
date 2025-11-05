@@ -11,7 +11,7 @@
     </div>
 
     <div class="row g-4">
-        <div class="col-lg-7">
+        <div class="col-lg-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-white">
                     <h2 class="h5 mb-0">Thông tin khuyến mãi</h2>
@@ -120,7 +120,7 @@
             </div>
         </div>
         @if ($promotion)
-            <div class="col-lg-5">
+            <div class="col-lg-12">
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center">
                         <h2 class="h5 mb-0">Tầng khuyến mãi</h2>
@@ -199,13 +199,13 @@
                                             </ul>
                                         </div>
                                         <div class="text-end">
-                                            <a href="#" class="btn btn-sm btn-link" data-bs-toggle="collapse" data-bs-target="#tier-edit-{{ $tier->get('tier_level') }}">Sửa</a>
+                                            <a href="#" class="btn btn-sm btn-link" data-bs-toggle="collapse" data-bs-target="#tier-edit-{{ $tier->get('tier_level') }}"><i class="fas fa-edit"></i></a>
                                             <form action="{{ route('admin.promotions.tiers.destroy', [$promotion->get('promo_id'), $tier->get('tier_level')]) }}"
                                                   method="POST" class="d-inline"
                                                   onsubmit="return confirm('Xóa tầng khuyến mãi này?');">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="btn btn-sm btn-link text-danger">Xóa</button>
+                                                <button type="submit" class="btn btn-sm btn-link text-danger"><i class="fas fa-trash-alt"></i></button>
                                             </form>
                                         </div>
                                     </div>

@@ -1049,6 +1049,67 @@ def create_order(payload: OrderPayload):
         ) from exc
 
 
+def _apply_order_updates(
+    order_id: str,
+    updates: Dict[str, Any],
+    existing: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if not order_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ma don hang khong hop le.",
+        )
+
+    record: Dict[str, Any]
+    if existing:
+        record = dict(existing)
+    else:
+        row = session.execute(
+            "SELECT * FROM orders_by_id WHERE order_id = %s",
+            (order_id,),
+        ).one()
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Don hang khong ton tai.",
+            )
+        record = dict(row)
+
+    user_id = record.get("user_id")
+    created_at = record.get("created_at")
+    if not user_id or created_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Khong the xac dinh khoa don hang.",
+        )
+
+    merged = record.copy()
+    if updates:
+        merged.update(updates)
+
+        columns = list(updates.keys())
+        assignments = ", ".join(f"{column} = %s" for column in columns)
+        values = [merged.get(column) for column in columns]
+
+        try:
+            session.execute(
+                f"UPDATE orders_by_id SET {assignments} WHERE order_id = %s",
+                (*values, order_id),
+            )
+            session.execute(
+                f"UPDATE orders SET {assignments} WHERE user_id = %s AND created_at = %s AND order_id = %s",
+                (*values, user_id, created_at, order_id),
+            )
+        except Exception as exc:
+            logger.exception("Failed to update order %s", order_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Khong the cap nhat don hang. Vui long thu lai sau.",
+            ) from exc
+
+    return merged
+
+
 @app.post("/api/v1/orders/{order_id}/confirm")
 def confirm_order(order_id: str, payload: OrderStatusPayload = Body(default=OrderStatusPayload())):
     record = _apply_order_updates(order_id, {})

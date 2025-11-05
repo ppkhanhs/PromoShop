@@ -237,7 +237,7 @@
                                             @csrf
                                             @method('DELETE')
                                             <input type="hidden" name="promotion_id" value="{{ $promoData['promo_id'] ?? $promoData['promo_code'] ?? $promoData['code'] ?? '' }}">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">Bỏ</button>
+                                            <button type="submit" class="btn btn-sm text-danger"><i class="fas fa-trash-alt"></i></button>
                                         </form>
                                     </div>
                                 @endforeach
