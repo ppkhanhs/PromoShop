@@ -13,6 +13,41 @@
         </a>
     </div>
 
+    @php
+        $formatCassandraDate = $formatCassandraDate ?? function ($value) {
+            if (empty($value)) {
+                return 'Không giới hạn';
+            }
+
+            try {
+                if (is_object($value)) {
+                    if (method_exists($value, 'toDateTime')) {
+                        return \Carbon\Carbon::instance($value->toDateTime())->format('d/m/Y');
+                    }
+
+                    return (string) $value;
+                }
+
+                if (is_numeric($value)) {
+                    $val = (int) $value;
+                    if ($val < 1_000_000) {
+                        return \Carbon\Carbon::createFromTimestamp($val * 86_400)->format('d/m/Y');
+                    }
+
+                    return \Carbon\Carbon::createFromTimestamp($val)->format('d/m/Y');
+                }
+
+                if (preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $value)) {
+                    return \Carbon\Carbon::parse($value)->format('d/m/Y');
+                }
+
+                return (string) $value;
+            } catch (\Exception $e) {
+                return 'Không xác định';
+            }
+        };
+    @endphp
+
     <div class="card shadow-sm">
         <div class="table-responsive">
             <table class="table table-striped align-middle mb-0">
@@ -66,38 +101,8 @@
                                 @php
                                     $startRaw = $promotion->get('start_date');
                                     $endRaw = $promotion->get('end_date');
-
-                                    function formatCassandraDate($value) {
-                                        if (empty($value)) return 'Không giới hạn';
-
-                                        try {
-                                            if (is_object($value)) {
-                                                if (method_exists($value, 'toDateTime')) {
-                                                    return \Carbon\Carbon::instance($value->toDateTime())->format('d/m/Y');
-                                                }
-                                                return (string)$value;
-                                            }
-
-                                            if (is_numeric($value)) {
-                                                $val = (int)$value;
-                                                if ($val < 1000000) {
-                                                    return \Carbon\Carbon::createFromTimestamp($val * 86400)->format('d/m/Y');
-                                                }
-                                                return \Carbon\Carbon::createFromTimestamp($val)->format('d/m/Y');
-                                            }
-
-                                            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value)) {
-                                                return \Carbon\Carbon::parse($value)->format('d/m/Y');
-                                            }
-
-                                            return $value;
-                                        } catch (\Exception $e) {
-                                            return 'Không xác định';
-                                        }
-                                    }
-
-                                    $start = formatCassandraDate($startRaw);
-                                    $end = formatCassandraDate($endRaw);
+                                    $start = $formatCassandraDate($startRaw);
+                                    $end = $formatCassandraDate($endRaw);
                                 @endphp
 
                                 <div>Bắt đầu: <strong>{{ $start }}</strong></div>

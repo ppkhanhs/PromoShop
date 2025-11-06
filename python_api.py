@@ -7,6 +7,9 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+import re
+
+from cassandra import InvalidRequest
 from cassandra.cluster import Cluster
 from cassandra.query import dict_factory
 from fastapi import Body, FastAPI, HTTPException, Query, status
@@ -80,14 +83,24 @@ ALLOWED_ORDER_STATUSES = {
     "cancelled",
 }
 
+ORDERS_COLUMNS: set[str] = set()
+ORDERS_BY_ID_COLUMNS: set[str] = set()
 if _orders_table:
+    ORDERS_COLUMNS = set(_orders_table.columns.keys())
     for column, cql_type in ORDER_OPTIONAL_COLUMNS.items():
         if column not in _orders_table.columns:
             session.execute(f"ALTER TABLE orders ADD {column} {cql_type}")
+            ORDERS_COLUMNS.add(column)
+        else:
+            ORDERS_COLUMNS.add(column)
 if _orders_by_id_table:
+    ORDERS_BY_ID_COLUMNS = set(_orders_by_id_table.columns.keys())
     for column, cql_type in ORDER_OPTIONAL_COLUMNS.items():
         if column not in _orders_by_id_table.columns:
             session.execute(f"ALTER TABLE orders_by_id ADD {column} {cql_type}")
+            ORDERS_BY_ID_COLUMNS.add(column)
+        else:
+            ORDERS_BY_ID_COLUMNS.add(column)
 
 app = FastAPI(title="PromoShop Cassandra API", version="1.0.0")
 
@@ -1087,27 +1100,98 @@ def _apply_order_updates(
     if updates:
         merged.update(updates)
 
-        columns = list(updates.keys())
-        assignments = ", ".join(f"{column} = %s" for column in columns)
-        values = [merged.get(column) for column in columns]
+        non_null_updates = {
+            column: merged.get(column)
+            for column in updates.keys()
+            if merged.get(column) is not None
+        }
+        null_columns = [
+            column for column in updates.keys() if merged.get(column) is None
+        ]
 
-        try:
-            session.execute(
-                f"UPDATE orders_by_id SET {assignments} WHERE order_id = %s",
-                (*values, order_id),
-            )
-            session.execute(
-                f"UPDATE orders SET {assignments} WHERE user_id = %s AND created_at = %s AND order_id = %s",
-                (*values, user_id, created_at, order_id),
-            )
-        except Exception as exc:
-            logger.exception("Failed to update order %s", order_id)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Khong the cap nhat don hang. Vui long thu lai sau.",
-            ) from exc
+        attempt = 0
+        while True:
+            try:
+                if non_null_updates:
+                    columns = list(non_null_updates.keys())
+                    assignments = ", ".join(f"{column} = %s" for column in columns)
+                    values = [non_null_updates[column] for column in columns]
+
+                    session.execute(
+                        f"UPDATE orders_by_id SET {assignments} WHERE order_id = %s",
+                        (*values, order_id),
+                    )
+                    session.execute(
+                        f"UPDATE orders SET {assignments} WHERE user_id = %s AND created_at = %s AND order_id = %s",
+                        (*values, user_id, created_at, order_id),
+                    )
+
+                for column in null_columns:
+                    session.execute(
+                        f"DELETE {column} FROM orders_by_id WHERE order_id = %s",
+                        (order_id,),
+                    )
+                    session.execute(
+                        f"DELETE {column} FROM orders WHERE user_id = %s AND created_at = %s AND order_id = %s",
+                        (user_id, created_at, order_id),
+                    )
+                break
+            except InvalidRequest as exc:
+                missing_column = _extract_missing_column(str(exc))
+                if (
+                    missing_column
+                    and _ensure_order_column(missing_column)
+                    and attempt == 0
+                ):
+                    attempt += 1
+                    continue
+                logger.exception("Failed to update order %s", order_id)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Khong the cap nhat don hang. Vui long thu lai sau.",
+                ) from exc
+            except Exception as exc:
+                logger.exception("Failed to update order %s", order_id)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Khong the cap nhat don hang. Vui long thu lai sau.",
+                ) from exc
 
     return merged
+
+
+def _extract_missing_column(message: str) -> Optional[str]:
+    patterns = [
+        r"Undefined column name (\w+)",
+        r"Invalid column name (\w+)",
+        r"Unknown identifier (\w+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _ensure_order_column(column: str) -> bool:
+    column = column.strip()
+    if not column or column not in ORDER_OPTIONAL_COLUMNS:
+        return False
+
+    cql_type = ORDER_OPTIONAL_COLUMNS[column]
+    added = False
+
+    if column not in ORDERS_COLUMNS:
+        session.execute(f"ALTER TABLE orders ADD {column} {cql_type}")
+        ORDERS_COLUMNS.add(column)
+        added = True
+
+    if column not in ORDERS_BY_ID_COLUMNS:
+        session.execute(f"ALTER TABLE orders_by_id ADD {column} {cql_type}")
+        ORDERS_BY_ID_COLUMNS.add(column)
+        added = True
+
+    return added
 
 
 @app.post("/api/v1/orders/{order_id}/confirm")
